@@ -1,9 +1,9 @@
 # **ESP_8_BIT:** Atari 8 bit computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
-## Supports NTSC/PAL color composite video ouput, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction
+## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction
 
 ![ESP_8_BIT](img/esp8bit.jpg)
 
-**ESP_8_BIT** is designed to run on the ESP32 within the Arduino IDE framework. See in in action on [Youtube](https://www.youtube.com/watch?v=qFRkfeuTUrU). Schematic is pretty simple:
+**ESP_8_BIT** is designed to run on the ESP32 within the Arduino IDE framework. See it in action on [Youtube](https://www.youtube.com/watch?v=qFRkfeuTUrU). Schematic is pretty simple:
 
 ```
     -----------
@@ -38,7 +38,7 @@ Build and run the sketch and connect to an old-timey composite input. The first 
 # The Emulated
 
 ## Atari 400/800, XL, XEGS, 5200
-Oh how I adore thee Atari 8 bit. 40 years on your cheery blue default background color and enigmatically wiggly built-in font still delights me. Your bizare industrial design and [giant floppy drives](https://hackaday.com/2015/11/03/minituarizing-the-atari-disk-drive/) are the stuff of legend. Nice to see you back in this new incarnation.
+Oh how I adore thee Atari 8 bit. 40 years on your cheery blue default background color and enigmatically wiggly built-in font still delights me. Your bizarre industrial design and [giant floppy drives](https://hackaday.com/2015/11/03/minituarizing-the-atari-disk-drive/) are the stuff of legend. Nice to see you back in this new incarnation.
 
 Atari support is built from the venerable Atari800 emulator. Some violence was done to move structures and tables into read-only flash. It does not support machines with 128k RAM.
 
@@ -177,7 +177,7 @@ PDM is used in digital mems microphones and is a great way of attaching lots of 
 ### PWM
 PWM is really a special case of PDM. It does not do a great job of shaping noise but for our purposes it is really convenient. With up to 16 outputs from the LED PWM hardware stereo would be no problem and it only takes a couple of lines of code to get it going. Its limited dynamic range is more than enough to reproduce those classic sounds from the 80's.
 
-You will want to add a simple rc filter to the output pin of either PWM or PDM to avoid becomming a tiny radio station and interferring with the nice video are producing.
+You will want to add a simple rc filter to the output pin of either PWM or PDM to avoid becoming a tiny radio station and interfering with the nice video are producing.
 
 ## Bringing it Together
 
@@ -201,7 +201,7 @@ Short answer is you don't. When a large cart is selected it gets copied into `Cr
 # Keyboards & Controllers
 **ESP_8_BIT** supports Bluetooth Classic/EDR keyboards and WiiMotes along with an variety of IR keyboards and joysticks.
 
-**On boot the software searches for new Bluetooth devices for 5 seconds**; if the device is in pairing mode the softwae should find it and display its name at the bottom of the screen. Some keyboards will require you to enter a "0000" to establish the connection the first time. WiiMotes should automatically pair and reconnect. WiiMote Classic controllers are also supported.
+**On boot the software searches for new Bluetooth devices for 5 seconds**; if the device is in pairing mode the software should find it and display its name at the bottom of the screen. Some keyboards will require you to enter a "0000" to establish the connection the first time. WiiMotes should automatically pair and reconnect. WiiMote Classic controllers are also supported.
 
 ![Input Devices](img/inputdevices.jpg)
 
