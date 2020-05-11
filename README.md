@@ -3,7 +3,7 @@
 
 ![ESP_8_BIT](img/esp8bit.jpg)
 
-**ESP_8_BIT** is designed to run on the ESP32 within the Arduino IDE framework. Schematic is pretty simple:
+**ESP_8_BIT** is designed to run on the ESP32 within the Arduino IDE framework. See in in action on [Youtube](https://www.youtube.com/watch?v=qFRkfeuTUrU). Schematic is pretty simple:
 
 ```
     -----------
