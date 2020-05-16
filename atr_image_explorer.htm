@@ -1,0 +1,2181 @@
+
+<!DOCTYPE html>
+<html>
+<title>ATR</title>
+<style>
+
+body {
+	background-color:#F8F8F8;
+	font-family:"Open Sans","Helvetica Neue",Helvetica;
+	padding: 20px;
+
+    display: flex;
+    flex-direction: column;
+}
+canvas {
+    zoom:200%;
+    border:none;
+    padding: 0px;
+    margin:0px;
+}
+nav {
+    border: solid 1px #CCC;
+    background: #CCF;
+}
+ul {
+    list-style-type: none;
+    border:none;
+    margin: 0px;
+    padding: 0px;
+}
+li {
+    max-height: 16px;
+}
+li:hover {
+    background-color: yellow;
+    filter: brightness(200%);
+}
+
+h1, h2, h3, h4, h5, h6 {
+	font-weight: 300;
+}
+h2 {
+	font-size: 30px;
+}
+#gl {
+	border: solid 1px #C00;
+}
+canvas {
+  image-rendering: -moz-crisp-edges;          /* FF 6.0+                       */
+  image-rendering: -webkit-optimize-contrast; /* Safari                        */
+  image-rendering: -o-crisp-edges;            /* OS X & Windows Opera (12.02+) */
+  image-rendering: pixelated;                 /* Awesome future-browsers       */
+  -ms-interpolation-mode: nearest-neighbor;   /* IE                            */
+}
+
+td {
+	border: solid 8px #F8F8F8;
+	padding: 16px;
+	margin: 16px;
+	background: #23A;
+	color: #FFF;
+	font-weight: 500;
+}
+.sw {
+	background: #A32;
+}
+.hw {
+	background: #3A2;
+}
+
+.over {
+  border: 2px dashed #000;
+}
+
+.info {
+    min-height: 24px;
+    padding: 8px;
+    border-bottom: 1px solid #CCC;
+}
+</style>
+
+<script id="hdr" type="text/template">
+	<b>{{name}}</b> {{size}} {{sector_size}}
+	<hr/>
+	toc:<br/>{{toc}}<br/>
+</script>
+
+<script id="file" type="text/template">
+	<div class='file'><b onclick='show({{start}})'>{{name}}</b> ({{total}} sectors at {{start}})</div>
+</script>
+
+<script id="err" type="text/template">
+	error:<b>{{err}}</b>
+</script>
+
+<script id="pre" type="text/template">
+	<pre>{{pre}}</pre>
+</script>
+
+<script>
+var _ajax = function(m,u,c,d) {
+	var x = new XMLHttpRequest;
+	x.onreadystatechange=function(){x.readyState^4||c(this)};
+	x.open(m,u);
+	if (d) {
+		x.setRequestHeader('Content-Type', 'application/json');
+		d = JSON.stringify(d);
+	}
+	x.send(d);
+};
+
+var _q = function(q) {
+	return document.querySelector(q)
+};
+
+var _h = function(q,html) {
+    return _q(q).innerHTML = html;
+};
+
+var _txt = function(q) {
+	return _q(q).innerText;
+};
+
+
+function _t(s,d)
+{
+	for(var p in d)
+		s=s.replace(new RegExp('{{'+p+'}}','g'), d[p]);
+	return s;
+}
+
+function _m(src,dst,obj)
+{
+	src = _q(src);
+	dst = _q(dst);
+	if (src && dst)
+		dst.innerHTML = _t(src.innerText,obj);
+}
+
+function vis(e,on)
+{
+	e.style.visibility = on ? "visible" : "hidden";
+	return on;
+}
+
+function stop()
+{
+	event.preventDefault();
+	event.stopPropagation();
+}
+
+function get(url,cb,d)
+{
+	_ajax(d ? "post":"get",url,function(r) {
+		var o = JSON.parse(r.responseText);
+		cb(JSON.parse(r.responseText));
+	},d);
+}
+
+function display(url,src,dst)
+{
+	get(url,function(o) {
+		_m(src,dst,o);
+	});
+}
+
+function repeat(tmpl,list)
+{
+	var tmpl = _q(tmpl).innerText;	// 
+	var s = [];
+	for (var i in list)
+		s.push(_t(tmpl,list[i]));
+	return s.join('');
+}
+
+function download(blob, filename)
+{
+    var url = (window.URL || window.webkitURL).createObjectURL(blob);
+    var link = window.document.createElement('a');
+    link.href = url;
+    link.download = filename || 'output.png';
+    var click = document.createEvent("Event");
+    click.initEvent("click", true, true);
+    link.dispatchEvent(click);
+}
+
+function saveByteArray(name, data)
+{
+    var blob = new Blob([data], {type: "application/data"});
+    var link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+};
+
+
+function toggle(el)
+{
+    el = _q(el);
+    el.style.display = (el.style.display != 'none' ? 'none' : '' );
+}
+
+var _hex = "0123456789ABCDEF";
+function hex(i,len)
+{
+	var s = '';
+	if (!len)
+		len = 2;
+	while(len--)
+		s += _hex[(i >> (len*4)) & 0xF];
+	return s;
+}
+
+function escapestr(c)
+{
+	switch (c) {
+		case "<": return "&lt;"
+		case ">": return "&gt;"
+	}
+	return c;
+}
+
+function esc(s)
+{
+	var n = '';
+	for (var i = 0; i < s.length; i++)
+		n+= escapestr(s.charAt(i));
+	return n;
+}
+
+function hex_line(addr,data,i,len)
+{
+	var s = [hex(addr,6) + " "];
+	var p = '';
+	while (len--) {
+		var j = data[i];
+		if (j >= 0x20 && j <= 0x7E)
+			p += escapestr(String.fromCharCode(j));
+		else
+			p += '.'
+		s.push(hex(data[i++],2) + " ");
+	}
+	return s.join('') + " " + p;
+}
+
+function hex_dump(a,i,len)
+{
+	var hex = [];
+	for (var j = 0; j < len; j += 16)
+		hex.push(hex_line(j,a,i+j,16));
+	return hex.join("\n");
+}
+
+//===================================================================================================
+//===================================================================================================
+
+var _fcanvas;
+function draw(ctx,s,x,y)
+{
+    for (var i = 0; i < s.length; i++) {
+        var n = s.charCodeAt(i);
+        ctx.drawImage(_fcanvas,n*8,0,8,8,x*8,y*8,8,8);
+        x++;
+    }
+}
+
+// generate a canvas containing atari font
+function get_font()
+{
+    // map atascii to a line of font bits
+    // https://www.atariarchives.org/mapping/appendix10.php
+    function font_bits(c,y)
+    {
+        var invert = c & 0x80 ? 0xFF : 0x00;
+        c = c & 0x7F;
+        if (c >= 32 && c < 96)
+            c -= 32;
+        else if (c < 32)
+            c += 32;
+        return _font[c*8 + y] ^ invert;
+    }
+    _fcanvas = document.createElement('canvas');
+    _fcanvas.width = 256*8;
+    _fcanvas.height = 8;
+    var ctx = _fcanvas.getContext('2d');
+    var pix = ctx.getImageData(0,0,256*8,8);
+    var d = pix.data;
+    var f = 0;
+    var i = 0;
+    for (var y = 0; y < 8; y++) {
+    	for (var c = 0; c < 256; c++)
+    	{
+    		var b = font_bits(c,y);
+    		for (var x = 0; x < 8; x++) {
+    			if (b & 0x80) {
+      			d[i+0] = 128;
+      			d[i+1] = 162;
+      			d[i+2] = 255;
+      		} else {
+      			d[i+0] = 17;
+      			d[i+1] = 59;
+      			d[i+2] = 128;
+      		}
+      		d[i+3] = 0xFF;
+      		i += 4;
+      		b <<= 1;
+    		}
+    	}
+    }
+    ctx.putImageData(pix,0,0);
+}
+
+// make an atari line of text to look like dir
+function draw_line(id,txt)
+{
+    var c = _q(id);
+    c.width = txt.length*8;
+    c.height = 8;
+    var ctx = c.getContext('2d');
+    draw(ctx,txt,0,0);
+}
+
+function ftype(f)
+{
+    switch (f.ext) {
+        case "bas": return "Atari Basic";
+        case "lst": return "Atari Basic Listing";
+        case "xex": return "Executable";
+        case "sys": return "System";
+        case "atr": return "ATR Disk Image";
+        case "bin": return "Binary";
+    }
+    return f.ext + " file";
+}
+
+function finfo(f)
+{
+    return `<b>${f.name}</b><br/>(${f.data.length} bytes) ${ftype(f)}`;
+}
+
+// show an array of atari text
+function show_ataritext(f,lst)
+{
+    var wrap = [];
+    lst.forEach(s => {
+        while (s.length > 38)
+        {
+            wrap.push(s.substr(0,38));
+            s = s.substr(38);
+        }
+        wrap.push(s);
+    });
+
+    render_file(f);
+
+    var c = _q("#show");
+    c.width = 40*8;
+    c.height = wrap.length*8+16;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = "rgba(17,59,128,1)";
+    ctx.fillRect(0, 0, c.width, c.height);
+    for (var y = 0; y < wrap.length; y++)
+        draw(ctx,wrap[y],2,y+1);
+}
+
+var _font = [
+    // atari 128 rom font
+    // 32..95
+    // 0..31
+    // 96..128
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x18,0x18,0x18,0x18,0x00,0x18,0x00,
+    0x00,0x66,0x66,0x66,0x00,0x00,0x00,0x00,
+    0x00,0x66,0xff,0x66,0x66,0xff,0x66,0x00,
+    0x18,0x3e,0x60,0x3c,0x06,0x7c,0x18,0x00,
+    0x00,0x66,0x6c,0x18,0x30,0x66,0x46,0x00,
+    0x1c,0x36,0x1c,0x38,0x6f,0x66,0x3b,0x00,
+    0x00,0x18,0x18,0x18,0x00,0x00,0x00,0x00,
+    0x00,0x0e,0x1c,0x18,0x18,0x1c,0x0e,0x00,
+    0x00,0x70,0x38,0x18,0x18,0x38,0x70,0x00,
+    0x00,0x66,0x3c,0xff,0x3c,0x66,0x00,0x00,
+    0x00,0x18,0x18,0x7e,0x18,0x18,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x30,
+    0x00,0x00,0x00,0x7e,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00,
+    0x00,0x06,0x0c,0x18,0x30,0x60,0x40,0x00,
+    0x00,0x3c,0x66,0x6e,0x76,0x66,0x3c,0x00,
+    0x00,0x18,0x38,0x18,0x18,0x18,0x7e,0x00,
+    0x00,0x3c,0x66,0x0c,0x18,0x30,0x7e,0x00,
+    0x00,0x7e,0x0c,0x18,0x0c,0x66,0x3c,0x00,
+    0x00,0x0c,0x1c,0x3c,0x6c,0x7e,0x0c,0x00,
+    0x00,0x7e,0x60,0x7c,0x06,0x66,0x3c,0x00,
+    0x00,0x3c,0x60,0x7c,0x66,0x66,0x3c,0x00,
+    0x00,0x7e,0x06,0x0c,0x18,0x30,0x30,0x00,
+    0x00,0x3c,0x66,0x3c,0x66,0x66,0x3c,0x00,
+    0x00,0x3c,0x66,0x3e,0x06,0x0c,0x38,0x00,
+    0x00,0x00,0x18,0x18,0x00,0x18,0x18,0x00,
+    0x00,0x00,0x18,0x18,0x00,0x18,0x18,0x30,
+    0x06,0x0c,0x18,0x30,0x18,0x0c,0x06,0x00,
+    0x00,0x00,0x7e,0x00,0x00,0x7e,0x00,0x00,
+    0x60,0x30,0x18,0x0c,0x18,0x30,0x60,0x00,
+    0x00,0x3c,0x66,0x0c,0x18,0x00,0x18,0x00,
+    0x00,0x3c,0x66,0x6e,0x6e,0x60,0x3e,0x00,
+    0x00,0x18,0x3c,0x66,0x66,0x7e,0x66,0x00,
+    0x00,0x7c,0x66,0x7c,0x66,0x66,0x7c,0x00,
+    0x00,0x3c,0x66,0x60,0x60,0x66,0x3c,0x00,
+    0x00,0x78,0x6c,0x66,0x66,0x6c,0x78,0x00,
+    0x00,0x7e,0x60,0x7c,0x60,0x60,0x7e,0x00,
+    0x00,0x7e,0x60,0x7c,0x60,0x60,0x60,0x00,
+    0x00,0x3e,0x60,0x60,0x6e,0x66,0x3e,0x00,
+    0x00,0x66,0x66,0x7e,0x66,0x66,0x66,0x00,
+    0x00,0x7e,0x18,0x18,0x18,0x18,0x7e,0x00,
+    0x00,0x06,0x06,0x06,0x06,0x66,0x3c,0x00,
+    0x00,0x66,0x6c,0x78,0x78,0x6c,0x66,0x00,
+    0x00,0x60,0x60,0x60,0x60,0x60,0x7e,0x00,
+    0x00,0x63,0x77,0x7f,0x6b,0x63,0x63,0x00,
+    0x00,0x66,0x76,0x7e,0x7e,0x6e,0x66,0x00,
+    0x00,0x3c,0x66,0x66,0x66,0x66,0x3c,0x00,
+    0x00,0x7c,0x66,0x66,0x7c,0x60,0x60,0x00,
+    0x00,0x3c,0x66,0x66,0x66,0x6c,0x36,0x00,
+    0x00,0x7c,0x66,0x66,0x7c,0x6c,0x66,0x00,
+    0x00,0x3c,0x60,0x3c,0x06,0x06,0x3c,0x00,
+    0x00,0x7e,0x18,0x18,0x18,0x18,0x18,0x00,
+    0x00,0x66,0x66,0x66,0x66,0x66,0x7e,0x00,
+    0x00,0x66,0x66,0x66,0x66,0x3c,0x18,0x00,
+    0x00,0x63,0x63,0x6b,0x7f,0x77,0x63,0x00,
+    0x00,0x66,0x66,0x3c,0x3c,0x66,0x66,0x00,
+    0x00,0x66,0x66,0x3c,0x18,0x18,0x18,0x00,
+    0x00,0x7e,0x0c,0x18,0x30,0x60,0x7e,0x00,
+    0x00,0x1e,0x18,0x18,0x18,0x18,0x1e,0x00,
+    0x00,0x40,0x60,0x30,0x18,0x0c,0x06,0x00,
+    0x00,0x78,0x18,0x18,0x18,0x18,0x78,0x00,
+    0x00,0x08,0x1c,0x36,0x63,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0xff,0x00,
+    0x00,0x36,0x7f,0x7f,0x3e,0x1c,0x08,0x00,
+    0x18,0x18,0x18,0x1f,0x1f,0x18,0x18,0x18,
+    0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,
+    0x18,0x18,0x18,0xf8,0xf8,0x00,0x00,0x00,
+    0x18,0x18,0x18,0xf8,0xf8,0x18,0x18,0x18,
+    0x00,0x00,0x00,0xf8,0xf8,0x18,0x18,0x18,
+    0x03,0x07,0x0e,0x1c,0x38,0x70,0xe0,0xc0,
+    0xc0,0xe0,0x70,0x38,0x1c,0x0e,0x07,0x03,
+    0x01,0x03,0x07,0x0f,0x1f,0x3f,0x7f,0xff,
+    0x00,0x00,0x00,0x00,0x0f,0x0f,0x0f,0x0f,
+    0x80,0xc0,0xe0,0xf0,0xf8,0xfc,0xfe,0xff,
+    0x0f,0x0f,0x0f,0x0f,0x00,0x00,0x00,0x00,
+    0xf0,0xf0,0xf0,0xf0,0x00,0x00,0x00,0x00,
+    0xff,0xff,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff,
+    0x00,0x00,0x00,0x00,0xf0,0xf0,0xf0,0xf0,
+    0x00,0x1c,0x1c,0x77,0x77,0x08,0x1c,0x00,
+    0x00,0x00,0x00,0x1f,0x1f,0x18,0x18,0x18,
+    0x00,0x00,0x00,0xff,0xff,0x00,0x00,0x00,
+    0x18,0x18,0x18,0xff,0xff,0x18,0x18,0x18,
+    0x00,0x00,0x3c,0x7e,0x7e,0x7e,0x3c,0x00,
+    0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,
+    0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,
+    0x00,0x00,0x00,0xff,0xff,0x18,0x18,0x18,
+    0x18,0x18,0x18,0xff,0xff,0x00,0x00,0x00,
+    0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,
+    0x18,0x18,0x18,0x1f,0x1f,0x00,0x00,0x00,
+    0x78,0x60,0x78,0x60,0x7e,0x18,0x1e,0x00,
+    0x00,0x18,0x3c,0x7e,0x18,0x18,0x18,0x00,
+    0x00,0x18,0x18,0x18,0x7e,0x3c,0x18,0x00,
+    0x00,0x18,0x30,0x7e,0x30,0x18,0x00,0x00,
+    0x00,0x18,0x0c,0x7e,0x0c,0x18,0x00,0x00,
+    0x00,0x18,0x3c,0x7e,0x7e,0x3c,0x18,0x00,
+    0x00,0x00,0x3c,0x06,0x3e,0x66,0x3e,0x00,
+    0x00,0x60,0x60,0x7c,0x66,0x66,0x7c,0x00,
+    0x00,0x00,0x3c,0x60,0x60,0x60,0x3c,0x00,
+    0x00,0x06,0x06,0x3e,0x66,0x66,0x3e,0x00,
+    0x00,0x00,0x3c,0x66,0x7e,0x60,0x3c,0x00,
+    0x00,0x0e,0x18,0x3e,0x18,0x18,0x18,0x00,
+    0x00,0x00,0x3e,0x66,0x66,0x3e,0x06,0x7c,
+    0x00,0x60,0x60,0x7c,0x66,0x66,0x66,0x00,
+    0x00,0x18,0x00,0x38,0x18,0x18,0x3c,0x00,
+    0x00,0x06,0x00,0x06,0x06,0x06,0x06,0x3c,
+    0x00,0x60,0x60,0x6c,0x78,0x6c,0x66,0x00,
+    0x00,0x38,0x18,0x18,0x18,0x18,0x3c,0x00,
+    0x00,0x00,0x66,0x7f,0x7f,0x6b,0x63,0x00,
+    0x00,0x00,0x7c,0x66,0x66,0x66,0x66,0x00,
+    0x00,0x00,0x3c,0x66,0x66,0x66,0x3c,0x00,
+    0x00,0x00,0x7c,0x66,0x66,0x7c,0x60,0x60,
+    0x00,0x00,0x3e,0x66,0x66,0x3e,0x06,0x06,
+    0x00,0x00,0x7c,0x66,0x60,0x60,0x60,0x00,
+    0x00,0x00,0x3e,0x60,0x3c,0x06,0x7c,0x00,
+    0x00,0x18,0x7e,0x18,0x18,0x18,0x0e,0x00,
+    0x00,0x00,0x66,0x66,0x66,0x66,0x3e,0x00,
+    0x00,0x00,0x66,0x66,0x66,0x3c,0x18,0x00,
+    0x00,0x00,0x63,0x6b,0x7f,0x3e,0x36,0x00,
+    0x00,0x00,0x66,0x3c,0x18,0x3c,0x66,0x00,
+    0x00,0x00,0x66,0x66,0x66,0x3e,0x0c,0x78,
+    0x00,0x00,0x7e,0x0c,0x18,0x30,0x7e,0x00,
+    0x00,0x18,0x3c,0x7e,0x7e,0x18,0x3c,0x00,
+    0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,
+    0x00,0x7e,0x78,0x7c,0x6e,0x66,0x06,0x00,
+    0x08,0x18,0x38,0x78,0x38,0x18,0x08,0x00,
+    0x10,0x18,0x1c,0x1e,0x1c,0x18,0x10,0x00,
+];
+
+function makefont()
+{
+	
+}
+
+//===================================================================================================
+//===================================================================================================
+//  Drag and drop
+
+function drop_init(el,onfile)
+{
+    function handleFileSelect(evt) {
+        evt.stopPropagation();
+        evt.preventDefault();
+        evt.target.classList.remove("over");
+
+        var files = evt.dataTransfer.files; // FileList object.
+        for (var i = 0, f; f = files[i]; i++) {
+            var reader = new FileReader();
+            reader.f = f;
+            reader.onload = (function(theFile) {
+                onfile(theFile.target.f,theFile.target.result);
+            });
+            reader.readAsArrayBuffer(f);
+        }
+    }
+
+    function handleDragOver(evt) {
+        evt.stopPropagation();
+        evt.preventDefault();
+        evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
+    }
+    el.addEventListener('dragover', handleDragOver, false);
+    el.addEventListener('drop', handleFileSelect, false);
+    el.addEventListener('dragenter', e => e.target.classList.add("over"), false);
+    el.addEventListener('dragleave', e => e.target.classList.remove("over"), false);
+}
+
+//===================================================================================================
+//===================================================================================================
+// http://www.atarimax.com/jindroush.atari.org/afmtbas.html
+// Disassemble atari basic
+
+var _basic_commands = [
+	"REM","DATA","INPUT","COLOR","LIST","ENTER","LET","IF","FOR","NEXT","GOTO",
+	"GO TO","GOSUB","TRAP","BYE","CONT","COM","CLOSE","CLR","DEG","DIM","END",
+	"NEW","OPEN","LOAD","SAVE","STATUS","NOTE","POINT","XIO","ON","POKE","PRINT",
+	"RAD","READ","RESTORE","RETURN","RUN","STOP","POP","?","GET","PUT","GRAPHICS",
+	"PLOT","POSITION","DOS","DRAWTO","SETCOLOR","LOCATE","SOUND","LPRINT","CSAVE",
+	"CLOAD","LET_","ERROR"
+];
+
+var _basic_operators = [
+	"_0","_1","_2","_3","_4","_5","_6","_7","_8","_9","_A","_B","_C","_D",
+	"NCONST","SCONST","NOUSE","NOUSE",",","$",":",";","EOL","GOTO","GOSUB"," TO ",
+	" STEP "," THEN ","#","<=","<>",">=","<",">","=","^","*","+","-","/"," NOT "," OR "," AND ",
+	"(",")","=","=","<=","<>",">=","<",">","=","+","-","(","(","(","(","(",",",
+	"STR$","CHR$","USR","ASC","VAL","LEN","ADR","ATN","COS","PEEK","SIN","RND","FRE",
+	"EXP","LOG","CLOG","SQR","SGN","ABS","INT","PADDLE","STICK","PTRIG","STRIG"
+];
+
+// convert a basic file to a LST
+function ataribasic(a,i,len)
+{
+	var b = {
+		lomem: le16(a,i+0),   // should be zero
+		vnt: le16(a,i+2),     // start of variable name table
+		vnte: le16(a,i+4),    // end of variable name table
+		vvt: le16(a,i+6),     // start of variable values table
+		stmtab: le16(a,i+8),  // start of token area
+		stmcur: le16(a,i+10), // current line (line 32768)
+		starp: le16(a,i+12),  // end of token area, start of stacks
+
+		variable_names:[],
+		variable_values:[],
+		statements:[]
+	}
+
+	var origin = b.vnt - b.lomem - 14; // file offsets are weird?
+    if (origin < 0)
+        return null;
+	b.vnt -= origin;
+	b.vnte -= origin;
+	b.vvt -= origin;
+	b.stmtab -= origin;
+	b.stmcur -= origin;
+	b.starp -= origin;
+    if (b.vnt > b.vnte || b.vnte > b.vvt || b.vvt > b.stmtab || b.stmtab > b.stmcur || b.stmcur > b.starp)
+        return null;    // Not a basic file?
+
+	function get_string(data,si,len) {
+		var s = '';
+		while (len--)
+			s += String.fromCharCode(data[si++]);
+		return s;
+	}
+
+	function bcd(data,bi)
+	{
+		var n = 0;
+		var e = data[bi++];
+		if (e == 0)
+			return 0;
+		for (var j = 0; j < 5; j++) {
+			var c = data[bi++];
+			n *= 10;
+			n += c >> 4;
+			n *= 10;
+			n += c & 0xF;
+		}
+		e = (e - 68) * 2;
+
+		switch (e) {	// Math.pow was not producing integers
+			case -1: return n/10;
+			case -2: return n/100;
+			case -3: return n/1000;
+			case -4: return n/10000;
+		}
+		return n*Math.pow(10,e);
+	}
+
+	var vnt_begin = i + b.vnt;
+	var vnt_end = i + b.vnte;
+	var n = '';
+	for (var j = vnt_begin; j < vnt_end; j++) {
+		n += String.fromCharCode(a[j]&0x7F);
+		if (a[j] & 0x80)
+		{
+			if (n.length && n[n.length-1] == '(')
+				n = n.substr(0,n.length-1);	// 
+			b.variable_names.push(n);
+			n = '';
+		}
+	}
+
+	var vvt_begin = i + b.vvt;	// NOT SURE WHY THESE ARE +1
+	var tokens_begin = i + b.stmtab;
+	for (var j = vvt_begin; j < tokens_begin; j += 8) {
+		var v= {
+			name:b.variable_names[a[j+1]]
+		}
+		var p0 = le16(a,j+2);
+		var p1 = le16(a,j+4);
+		var p2 = le16(a,j+6);
+		switch (a[j]) {
+			case 0x00:
+				v.type = "scalar";
+				v.value = bcd(a,j+2);
+				break;
+			case 0x40:
+			case 0x41:
+				v.type = "array";
+				break;
+			case 0x80:
+			case 0x81:
+				v.type = "string";
+				v.value = get_string(a,b.starp+i+p0,p1);
+				break;
+			default:
+				v.type = a[j];
+		}
+		b.variable_values.push(v);
+	}
+
+    //var tokens_end = i+b.stmcur;
+    var tokens_end = i+b.starp; // kings cribbage see https://www.atariarchives.org/mapping/memorymap.php STMCUR
+
+	var listing = [];
+	for (var j = tokens_begin; j < tokens_end;) {
+		var s = {tok:[]};
+		s.lineno = le16(a,j);
+		var len = a[j+2];
+
+        if (s.lineno == 32768 || len == 0)
+            break; // stmcur
+
+		var line = s.lineno + " ";
+
+		// Parse statements
+		var k = 3;
+        var op;
+		while (k < len) {
+			var end = a[j+k];
+			var cmd = a[j+k+1];
+			k += 2;
+            if (cmd >= 56)
+                return null;    // not basic
+
+			s.tok.push(_basic_commands[cmd]);
+			if (cmd != 0x36)	// slient LET
+			    line += _basic_commands[cmd] + " ";
+
+			if (cmd < 2) {	// REM,DATA
+				var txt = '';
+				while (k < end) {
+                    var c = a[j+k++];
+                    if (c == 0x9B)
+                        break;
+					txt += String.fromCharCode(c);
+                }
+				s.tok.push(txt);
+				line += txt;
+				k = end;
+			}
+
+			while (k < end) {
+				op = a[j+k++];
+				switch (op) {
+					case 0x0F: // SCONST
+						var txt = '';
+						var blen = a[j+k++];
+						while (blen--) {
+							c = a[j+k++];
+							if (c == 0x9B)
+								break;
+							txt += String.fromCharCode(c);
+						}
+						s.tok.push(txt);
+						line += '"' + txt + '"';
+						break;
+					case 0x0E: // NCONST
+						var n = bcd(a,j+k);
+						s.tok.push(n);
+						k += 6;
+						line += n;
+						break;
+					case 0x16: // EOL
+						k = end;
+						break;
+					default: {
+                        var txt;
+						if (op & 0x80)
+							txt = b.variable_names[op&0x7F];
+                        else {
+                            if (op >= 85)
+                                return null;    // not basic
+							txt = _basic_operators[op];
+                            if (cmd == 30 && (txt == "GOTO" || txt == "GOSUB"))   // on/goto/gosub
+                                txt = " " + txt + " ";
+                        }
+
+						line += txt;
+						s.tok.push(txt);
+					}
+				}
+			}
+		}
+		b.statements.push(s);
+		listing.push(line);
+		j += len;
+	}
+
+    var d = [];
+    listing.forEach(line => {
+        for (var i = 0; i < line.length; i++)
+            d.push(line.charCodeAt(i));
+        d.push(0x9B);
+    });
+	return {listing:listing,tokens:b,lst:new Uint8Array(d)}
+}
+
+//===================================================================================================
+//===================================================================================================
+// Atari syms
+
+var _syms_zp = {
+'00':["LINZBS","LINBUG STORAGE"],
+'01':["NGFLAG",""],
+'02':["CASINI","CASSETTE INIT LOC"],
+'03':["CASINI+1",""],
+'04':["RAMLO","RAM POINTER FOR MEM TEST"],
+'05':["RAMLO+1",""],
+'06':["TRAMSZ","TEMP LOC FOR RAM SIZE"],
+'07':["TSTDAT","RAM TEST DATA LOC"],
+'08':["WARMST","WARM START FLAG"],
+'09':["BOOTQ","SUCCESSFUL BOOT FLAG"],
+'0A':["DOSVEC","DOS START VECTOR"],
+'0B':["DOSVEC+1",""],
+'0C':["DOSINI","DOS INIT ADDRESS"],
+'0D':["DOSINI+1",""],
+'0E':["APPMHI","APPLICATION MEM HI LIMIT"],
+'0F':["APPMHI+1",""],
+'10':["POKMSK","SYSTEM MASK FOR POKEY IRQ ENABLE"],
+'11':["BRKKEY","BREAK KEY FLAG"],
+'12':["RTCLOK","REAL TIME CLOCK (60HZ OR 16.66666 MS)"],
+'13':["RTCLOK+1",""],
+'14':["RTCLOK+2",""],
+'15':["BUFADR","INDIRECT BUFFER ADDRESS REG"],
+'16':["BUFADR+1",""],
+'17':["ICCOMT","COMMAND FOR VECTOR HANDLER"],
+'18':["DSKFMS","DISK FILE MANAGER POINTER"],
+'19':["DSKFMS+1",""],
+'1A':["DSKUTL","DISK UTILITIES POINTER"],
+'1B':["DSKUTL+1",""],
+'1C':["PTIMOT","PRINTER TIME OUT REGISTER"],
+'1D':["PBPNT","PRINT BUFFER POINTER"],
+'1E':["PBUFSZ","PRINT BUFFER SIZE"],
+'1F':["PTEMP","TEMP REG"],
+'20':["ICHIDZ","HANDLER INDEX NUMBER ($FF := IOCB FREE)"],
+'21':["ICDNOZ","DEVICE NUMBER (DRIVE NUMBER)"],
+'22':["ICCOMZ","COMMAND CODE"],
+'23':["ICSTAZ","STATUS OF LAST IOCB ACTION"],
+'24':["ICBALZ","BUFFER ADDRESS (LOW)"],
+'25':["ICBAHZ","BUFFER ADDRESS (HIGH)"],
+'26':["ICPTLZ","PUT BYTE ROUTINE ADDRESS - 1"],
+'27':["ICPTHZ",""],
+'28':["ICBLLZ","BUFFER LENGTH (LOW)"],
+'29':["ICBLHZ","BUFFER LENGTH (HIGH)"],
+'2A':["ICAX1Z","AUX INFO"],
+'2B':["ICAX2Z",""],
+'2C':["ICSPRZ","SPARE BYTES (CIO LOCAL USE)"],
+'2D':["ICSPRZ+1",""],
+'2E':["ICIDNO","IOCB LUMBER * 16"],
+'2F':["CIOCHR","CHARACTER BYTE FOR CURRENT OPERATION"],
+'30':["STATUS","INTERNAL STATUS STORAGE"],
+'31':["CHKSUM","CHECKSUM (SINGLE BYTE SUM WITH CARRY)"],
+'32':["BUNRLO","POINTER TO DATA BUFFER (LO BYTE)"],
+'33':["BUFRHI","POINTER TO DATA BUFFER (HI BYTE)"],
+'34':["BFENLO","NEXT BYTE PAST END OF BUFFER (LO BYTE)"],
+'35':["BNENHI","NEXT BYTE PAST END OF BUFFER (HI BYTE)"],
+'36':["CRETRY","NUMBER OF COMMAND FRAM RETRIES"],
+'37':["DRETRY","NUMBER OF DEVICE RETRIES"],
+'38':["BUFRFL","DATA BUFFER FULL FLAG"],
+'39':["RECVDN","RECEIVE DONE FLAG"],
+'3A':["XMTDON","XMIT DONE FLAG"],
+'3B':["CHKSNT","CHECKSUM SENT FLAG"],
+'3C':["NOCKSM","NO CHECKSUM FOLLOWS DATA FLAG"],
+'3D':["BPTR","BUFFER POINTER (CASSETTE)"],
+'3E':["FTYPE","FILE TYPE (SHORT IRG/LONG IRG)"],
+'3F':["FEOF","END OF FILE FLAG (CASSETTE)"],
+'40':["FREQ","FREQ COUNTER FOR CONSOLE SPEAKER"],
+'41':["SOUNDR","NOISY I/O FLAG. (ZERO IS QUIET)"],
+'42':["CRITIC","CRITICAL CODE IF NON-ZERO)"],
+'43':["FMSZPG","DISK FILE MANAGER SYSTEM STORAGE (7 BYTES)"],
+'44':["FMSZPG+1",""],
+'45':["FMSZPG+2",""],
+'46':["FMSZPG+3",""],
+'47':["FMSZPG+4",""],
+'48':["FMSZPG+5",""],
+'49':["FMSZPG+6",""],
+'4A':["CKEY","SET WHEN GAME START PRESSED"],
+'4B':["CASSBT","CASSETTE BOOT FLAG"],
+'4C':["DSTAT","DISPLAY STATUS"],
+'4D':["ATRACT","ATTRACT MODE FLAG"],
+'4E':["DRKMSK","DARK ATTRACT MASK"],
+'4F':["COLRSH","ATTRACT COLOR SHIFTER (XORED WITH PLAYFIELD)"],
+'50':["TMPCHR","TEMP CHAR STORAGE (DISPLAY HANDLER)"],
+'51':["HOLD1","TEMP STG (DISPLAY HANDLER)"],
+'52':["LMARGN","LEFT MARGIN"],
+'53':["RMARGN","RIGHT MARGIN"],
+'54':["ROWCRS","CURSOR COUNTERS"],
+'55':["COLCRS",""],
+'56':["COLCRS+1",""],
+'57':["DINDEX","DISPLAY INDEX (VARIOUS QUANTS)"],
+'58':["SAVMSC",""],
+'59':["SAVMSC+1",""],
+'5A':["OLDROW","PREVIOUS ROW/COL"],
+'5B':["OLDCOL",""],
+'5C':["OLDCOL+1",""],
+'5D':["OLDCHR","DATA UNDER CURSOR"],
+'5E':["OLDADR",""],
+'5F':["OLDADR+1",""],
+'60':["NEWROW","POINT DRAWS TO HERE"],
+'61':["NEWCOL",""],
+'62':["PALNTS",""],
+'63':["LOGCOL","POINTS AT COLUMN IN LOGICAL LINE"],
+'64':["ADRESS","INDIRECT POINTER"],
+'65':["ADRESS+1",""],
+'66':["MLTTMP","MULTIPLY TEMP"],
+'67':["TOADR+1",""],
+'68':["SAVADR",""],
+'69':["SAVADR+1",""],
+'6A':["RAMTOP","RAM SIZE DEFINED BY POWER ON LOGIC"],
+'6B':["BUFCNT","BUFFER COUNT"],
+'6C':["BUFSTR","EDITOR GETCH POINTER"],
+'6D':["BUFSTR+1",""],
+'6E':["BITMSK","BIT MASK"],
+'6F':["SHFAMT","OUTCHR SHIFT"],
+'70':["ROWAC","USED BY \"DRAW\""],
+'71':["ROWAC+1",""],
+'72':["COLAC",""],
+'73':["COLAC+1",""],
+'74':["ENDPT",""],
+'75':["ENDPT+1",""],
+'76':["DELTAR",""],
+'77':["DELTAC",""],
+'78':["DELTAC+1",""],
+'79':["ROWINC",""],
+'7A':["COLINC",""],
+'7B':["SWPFLG","NON-0 IF TXT AND RAM SWAPPED"],
+'7C':["HOLDCH","CH BEFORE CNTL & SHFT PROCESSING IN KGETCH"],
+'7D':["INSDAT","INSERT CHAR SAVE"],
+'7E':["COUNTR","DRAW COUNTER"],
+'7F':["COUNTR+1",""],
+'80':["LOMEM","BASIC POINTER TO LOW MEMORY"],
+'81':["LOMEM+1",""],
+'82':["VNTP","BASIC VARIABLE NAME TABLE"],
+'83':["VNTP+1",""],
+'84':["VNTD","BASIC VARIABLE NAME TABLE END"],
+'85':["VNTD+1",""],
+'86':["VVTP","BASIC VARIABLE VALUE TABLE"],
+'87':["VVTP+1",""],
+'88':["STMTAB","BASIC STATEMENT TABLE"],
+'89':["STMTAB+1",""],
+'8A':["STMCUR","BASIC CURRENT STATEMENT POINTER"],
+'8B':["STMCUR+1",""],
+'8C':["STARP","BASIC STRING AND ARRAY POINTER"],
+'8D':["STARP+1",""],
+'8E':["RUNSTK","BASIC RUNTIME STACK"],
+'8F':["RUNSTK+1",""],
+'90':["MEMTOP","BASIC TOP OF MEMORY"],
+'91':["MEMTOP+1",""],
+'92':["MEOLFLG",""],
+'94':["COX",""],
+'95':["POKADR",""],
+'96':["POKADR+1",""],
+'97':["SVESA",""],
+'98':["SVESA+1",""],
+'99':["MVFA",""],
+'9A':["MVFA+1",""],
+'9B':["MVTA",""],
+'9C':["MVTA+1",""],
+'9D':["CPC",""],
+'9E':["CPC+1",""],
+'9F':["LLNGTH",""],
+'A0':["TSLNUM",""],
+'A1':["TSLNUM+1",""],
+'A2':["MVLNG",""],
+'A3':["MVLNG+1",""],
+'A4':["ECSIZE",""],
+'A5':["ECSIZE+1",""],
+'A6':["DIRFLG",""],
+'A7':["STMLBD",""],
+'A8':["STINDEX",""],
+'A9':["OPSTKX",""],
+'AA':["ARSTKX",""],
+'AB':["EXSVOP",""],
+'AC':["EXSVPR",""],
+'AD':["LELNUM",""],
+'AE':["LELNUM+1",""],
+'AF':["STENUM",""],
+'B0':["COMCNT",""],
+'B1':["ADFLAG",""],
+'B2':["SVDISP",""],
+'B3':["ONLOOP",""],
+'B4':["ENTDTD",""],
+'B5':["LISTDTD",""],
+'B6':["DATAD",""],
+'B7':["DATALN",""],
+'B8':["DATALN+1",""],
+'B9':["ERRNUM",""],
+'BA':["STOPLN",""],
+'BB':["STOPLN+1",""],
+'BC':["TRAPLN",""],
+'BD':["TRAPLN+1",""],
+'BE':["SAVCUR",""],
+'BF':["SAVCUR+1",""],
+'C0':["IOCMD",""],
+'C1':["IODVC",""],
+'C2':["PROMPT",""],
+'C3':["ERRSAV",""],
+'C4':["TEMPA",""],
+'C5':["TEMPA+1",""],
+'C6':["ZTEMP2",""],
+'C7':["ZTEMP2+1",""],
+'C8':["COLOR",""],
+'C9':["PTABW",""],
+'CA':["LOADFLG",""],
+'D2':["VTYPE",""],
+'D3':["VNUM",""],
+'D4':["FR0",""],
+'D5':["FR0+1",""],
+'D6':["FR0+2",""],
+'D7':["FR0+3",""],
+'D8':["FR0+4",""],
+'D9':["FR0+5",""],
+'DA':["FRE",""],
+'DB':["FRE+1",""],
+'DC':["FRE+2",""],
+'DD':["FRE+3",""],
+'DE':["FRE+4",""],
+'DF':["FRE+5",""],
+'E0':["FR1",""],
+'E1':["FR1+1",""],
+'E2':["FR1+2",""],
+'E3':["FR1+3",""],
+'E4':["FR1+4",""],
+'E5':["FR1+5",""],
+'E6':["FR2",""],
+'E7':["FR2+1",""],
+'E8':["FR2+2",""],
+'E9':["FR2+3",""],
+'EA':["FR2+4",""],
+'EB':["FR2+5",""],
+'EC':["FRX",""],
+'ED':["EEXP",""],
+'EE':["NSIGN",""],
+'EF':["ESIGN",""],
+'F0':["FCHRFLG",""],
+'F1':["DIGRT",""],
+'F2':["CIX",""],
+'F3':["INBUFF",""],
+'F4':["INBUFF+1",""],
+'F5':["ZTEMP1",""],
+'F6':["ZTEMP1+1",""],
+'F7':["ZTEMP4",""],
+'F8':["ZTEMP4+1",""],
+'F9':["ZTEMP3",""],
+'FA':["ZTEMP3+1",""],
+'FB':["RADFLG",""],
+'FC':["FLPTR",""],
+'FD':["FLPTR+1",""],
+'FE':["FPTR2",""],
+'FF':["FPTR2+1",""]
+}
+
+var _syms_ = {
+'0200':["VDSLST","DISPLAY LIST NMI VECTOR"],
+'0201':["VDSLST+1",""],
+'0202':["VPRCED","PROCEED LINE IRQ VECTOR"],
+'0203':["VPRCED+1",""],
+'0204':["VINTER","INTERRUPT LINE IRQ VECTOR"],
+'0205':["VINTER+1",""],
+'0206':["VBREAK","\"BRK\" VECTOR"],
+'0207':["VBREAK+1",""],
+'0208':["VKEYBD","POKEY KEYBOARD IRQ VECTOR"],
+'0209':["VKEYBD+1",""],
+'020A':["VSERIN","POKEY SERIAL INPUT READY"],
+'020B':["VSERIN+1",""],
+'020C':["VSEROR","POKEY SERIAL OUTPUT READY"],
+'020D':["VSEROR+1",""],
+'020E':["VSEROC","POKEY SERIAL OUTPUT DONE"],
+'020F':["VSEROC+1",""],
+'0210':["VTIMR1","POKEY TIMER 1 IRQ"],
+'0211':["VTIMR1+1",""],
+'0212':["VTIMR2","POKEY TIMER 2 IRQ"],
+'0213':["VTIMR2+1",""],
+'0214':["VTIMR4","POKEY TIMER 4 IRQ (DO NOT USE)"],
+'0215':["VTIMR4+1",""],
+'0216':["VIMIRQ","IMMEDIATE IRQ VECTOR"],
+'0217':["VIMIRQ+1",""],
+'0218':["CDTMV1","COUNT DOWN TIMER 1"],
+'0219':["CDTMV1+1",""],
+'021A':["CDTMV1","COUNT DOWN TIMER 2"],
+'021B':["CDTMV2+1",""],
+'021C':["CDTMV1","COUNT DOWN TIMER 3"],
+'021D':["CDTMV3+1",""],
+'021E':["CDTMV1","COUNT DOWN TIMER 4"],
+'021F':["CDTMV4+1",""],
+'0220':["CDTMV1","COUNT DOWN TIMER 5"],
+'0221':["CDTMV5+1",""],
+'0222':["VVBLKI","IMMEDIATE VERTICAL BLANK NMI VECTOR"],
+'0223':["VVBLKI+1",""],
+'0224':["VVBLKD","DEFERRED VERTICAL BLANK NMI VECTOR"],
+'0225':["VVBLKD+1",""],
+'0226':["CDTMA1","COUNT DOWN TIMER 1 JSR ADDRESS"],
+'0227':["CDTMA1+1",""],
+'0228':["CDTMA2","COUNT DOWN TIMER 2 JSR ADDRESS"],
+'0229':["CDTMA2+1",""],
+'022A':["CDTMF3","COUNT DOWN TIMER 3 FLAG"],
+'022B':["SRTIMR","SOFTWARE REPEAT TIMER"],
+'022C':["CDTMF4","COUNT DOWN TIMER 4 FLAG"],
+'022D':["INTEMP","IANS TEMP (???)"],
+'022E':["CDTMF5","COUNT DOWN TIMER 5 FLAG"],
+'022F':["SDMCTL","SAVE DMACTL REGISTER"],
+'0230':["SDLSTL","SAVE DISPLAY LIST (LOW)"],
+'0231':["SDLSTH","SAVE DISPLAY LIST (HIGH)"],
+'0232':["SSKCTL","SKCTL REGISTER RAM"],
+'0233':["LCOUNT",""],
+'0234':["LPENH","LIGHT PEN HORIZ VALUE"],
+'0235':["LPENV","LIGHT PEN VERT VALUE"],
+'0236':["BRKKY",""],
+'0237':["BRKKY+1",""],
+'0238':["VPIRQ",""],
+'0239':["VPIRQ+1",""],
+'023A':["CDEVIC","COMMAND FRAME BUFFER - DEVICE"],
+'023B':["CCOMND","COMMAND"],
+'023C':["CAUX1","COMMAND AUX BYTE 1"],
+'023D':["CAUX2","COMMAND AUX BYTE 2"],
+'023E':["TEMP",""],
+'023F':["ERRFLG","ERROR FLAG - ANY DEVICE ERROR EXCEPT TIMEOUT"],
+'0240':["DFLAGS","DISK FLAGS FROM SECTOR ONE"],
+'0241':["DBSECT","NUMBER OF DISK BOOT SECTORS"],
+'0242':["BOOTAD","ADDRESS FOR DISK BOOT LOADER"],
+'0243':["BOOTAD+1",""],
+'0244':["COLDST","COLDSTART FLAG (1 = DOING COLDSTART)"],
+'0245':["RECLEN",""],
+'0246':["DSKTIM","DISK TIME OUT REG"],
+'0247':["LINBUF","CHAR LINE BUFFER (40 BYTES)"],
+'0248':["SHPDVS",""],
+'0249':["PDIMSK",""],
+'024A':["RELADR",""],
+'024B':["RELADR+1",""],
+'024C':["PPTMPA",""],
+'024D':["PPTMPX",""],
+'026B':["CHSALT",""],
+'026C':["VSFLAG",""],
+'026D':["KEYDIS",""],
+'026E':["FINE",""],
+'026F':["GPRIOR","GLOBAL PRIORITY CELL"],
+'0270':["PADDL0","POT 0 SHADOW"],
+'0271':["PADDL1","POT 1 SHADOW"],
+'0272':["PADDL2","POT 2 SHADOW"],
+'0273':["PADDL3","POT 3 SHADOW"],
+'0274':["PADDL4","POT 4 SHADOW"],
+'0275':["PADDL5","POT 5 SHADOW"],
+'0276':["PADDL6","POT 6 SHADOW"],
+'0277':["PADDL7","POT 7 SHADOW"],
+'0278':["STICK0","JOYSTICK 0 SHADOW"],
+'0279':["STICK1","JOYSTICK 1 SHADOW"],
+'027A':["STICK2","JOYSTICK 2 SHADOW"],
+'027B':["STICK3","JOYSTICK 3 SHADOW"],
+'027C':["PTRIG0","PADDLE 0 TRIGGER"],
+'027D':["PTRIG1","PADDLE 1 TRIGGER"],
+'027E':["PTRIG2","PADDLE 2 TRIGGER"],
+'027F':["PTRIG3","PADDLE 3 TRIGGER"],
+'0280':["PTRIG4","PADDLE 4 TRIGGER"],
+'0281':["PTRIG5","PADDLE 5 TRIGGER"],
+'0282':["PTRIG6","PADDLE 6 TRIGGER"],
+'0283':["PTRIG7","PADDLE 7 TRIGGER"],
+'0284':["STRIG0","JOYSTICK 0 TRIGGER"],
+'0285':["STRIG1","JOYSTICK 1 TRIGGER"],
+'0286':["STRIG2","JOYSTICK 2 TRIGGER"],
+'0287':["STRIG3","JOYSTICK 3 TRIGGER"],
+'0288':["CSTAT","(UNUSED)"],
+'0289':["WMODE","R/W FLAG FOR CASSETTE"],
+'028A':["BLIM","BUFFER LIMIT (CASSETTE)"],
+'028B':["IMASK",""],
+'028C':["JVECK",""],
+'028D':["JVECK+1",""],
+'028E':["NEWADR",""],
+'028F':["NEWADR+1",""],
+'0290':["TXTROW","TEXT ROWCRS"],
+'0291':["TXTCOL","TEXT ROWCOL"],
+'0292':["TXTCOL+1",""],
+'0293':["TINDEX","TEXT INDEX"],
+'0294':["TXTMSC","FOOLS CONVRT INTO NEW MSC"],
+'0295':["TXTMSC+1",""],
+'0296':["TXTOLD","OLDROW AND OLDCOL FOR TEXT (AND THEN SOME)"],
+'0297':["TXTOLD+1",""],
+'0298':["TXTOLD+2",""],
+'0299':["TXTOLD+3",""],
+'029A':["TXTOLD+4",""],
+'029B':["TXTOLD+5",""],
+'029C':["TMPX1",""],
+'029D':["HOLD3",""],
+'029E':["SUBTMP",""],
+'029F':["HOLD2",""],
+'02A0':["DMASK",""],
+'02A1':["TMPLBT",""],
+'02A2':["ESCFLG","ESCAPE FLAG"],
+'02A3':["TABMAP","TAB BUFFER"],
+'02A4':["TABMAP+1",""],
+'02A5':["TABMAP+2",""],
+'02A6':["TABMAP+3",""],
+'02A7':["TABMAP+4",""],
+'02A8':["TABMAP+5",""],
+'02A9':["TABMAP+6",""],
+'02AA':["TABMAP+7",""],
+'02AB':["TABMAP+8",""],
+'02AC':["TABMAP+9",""],
+'02AD':["TABMAP+A",""],
+'02AE':["TABMAP+B",""],
+'02AF':["TABMAP+C",""],
+'02B0':["TABMAP+D",""],
+'02B1':["TABMAP+E",""],
+'02B2':["LOGMAP","LOGICAL LINE START BIT MAP"],
+'02B3':["LOGMAP+1",""],
+'02B4':["LOGMAP+2",""],
+'02B5':["LOGMAP+3",""],
+'02B6':["INVFLG","INVERSE VIDEO FLAG (ATARI KEY)"],
+'02B7':["FILFLG","RIGHT FILL FLAG FOR DRAW"],
+'02B8':["TMPROW",""],
+'02B9':["TMPCOL",""],
+'02BA':["TMPCOL+1",""],
+'02BB':["SCRFLG","SET IF SCROLL OCCURS"],
+'02BC':["HOLD4","MORE DRAW TEMPS"],
+'02BD':["HOLD5",""],
+'02BE':["SHFLOK","SHIFT LOCK KEY"],
+'02BF':["BOTSCR","BOTTOM OF SCREEN (24 NORM, 4 SPLIT)"],
+'02C0':["PCOLR0","P0 COLOR"],
+'02C1':["PCOLR1","P1 COLOR"],
+'02C2':["PCOLR2","P2 COLOR"],
+'02C3':["PCOLR3","P3 COLOR"],
+'02C4':["COLOR0","COLOR 0"],
+'02C5':["COLOR1",""],
+'02C6':["COLOR2",""],
+'02C7':["COLOR3",""],
+'02C8':["COLOR4","BACKGROUND"],
+'02C9':["RUNADR",""],
+'02CA':["RUNADR+1",""],
+'02CB':["HIUSED",""],
+'02CC':["HIUSED+1",""],
+'02CD':["ZHIUSE",""],
+'02CE':["ZHIUSE+1",""],
+'02CF':["GBYTEA",""],
+'02D0':["GBYTEA+1",""],
+'02D1':["LOADAD",""],
+'02D2':["LOADAD+1",""],
+'02D3':["ZLOADA",""],
+'02D4':["ZLOADA+1",""],
+'02D5':["DSCTLN",""],
+'02D6':["DSCTLN+1",""],
+'02D7':["ACMISR",""],
+'02D8':["ACMISR+1",""],
+'02D9':["KRPDEL",""],
+'02DA':["KEYREP",""],
+'02DB':["NOCLIK",""],
+'02DC':["HELPFG",""],
+'02DD':["DMASAV",""],
+'02DE':["PBPNT",""],
+'02DF':["PBUFSZ",""],
+'02E0':["RUNAD","DOS RUN ADDRESS"],
+'02E1':["RUNAD+1",""],
+'02E2':["INITAD","DOS INIT ADDRESS"],
+'02E3':["INITAD+1",""],
+'02E4':["RAMSIZ","RAM SIZE (HI BYTE ONLY)"],
+'02E5':["MEMTOP","TOP OF AVAILABLE MEMORY"],
+'02E6':["MEMTOP+1",""],
+'02E7':["MEMLO","BOTTOM OF AVAILABLE MEMORY"],
+'02E8':["MEMLO+1",""],
+'02E9':["HNDLOD",""],
+'02EA':["DVSTAT","STATUS BUFFER"],
+'02EB':["DVSTAT+1",""],
+'02EC':["DVSTAT+2",""],
+'02ED':["DVSTAT+3",""],
+'02EE':["CBAUDL","CASSETTE BAUD RATE (LO BYTE)"],
+'02EF':["CBAUDH","CASSETTE BAUD RATE (HI BYTE)"],
+'02F0':["CRSINH","CURSOR INHIBIT (00 = CURSOR ON)"],
+'02F1':["KEYDEL","KEY DELAY"],
+'02F2':["CH1",""],
+'02F3':["CHACT","CHACTL REGISTER (SHADOW)"],
+'02F4':["CHBAS","CHBAS REGISTER (SHADOW)"],
+'02F5':["NEWROW",""],
+'02F6':["NEWCOL",""],
+'02F7':["NEWCOL+1",""],
+'02F8':["ROWINC",""],
+'02F9':["COLINC",""],
+'02FA':["CHAR",""],
+'02FB':["ATACHR","ATASCII CHARACTER"],
+'02FC':["CH","GLOBAL VARIABLE FOR KEYBOARD"],
+'02FD':["FILDAT","RIGHT FILL DATA (DRAW)"],
+'02FE':["DSPFLG","DISPLAY FLAG: DISP CONTROLS IF NON-ZERO"],
+'02FF':["SSFLAG","START/STOP FLAG (CNTL-1) FOR PAGING"],
+'0300':["DDEVIC","BUS I.D. NUMBER"],
+'0301':["DUNIT","UNIT NUMBER"],
+'0302':["DCOMND","BUS COMMAND"],
+'0303':["DSTATS","COMMAND TYPE/STATUS RETURN"],
+'0304':["DBUFLO","DATA BUFFER POINTER"],
+'0305':["DBUFHI","..."],
+'0306':["DTIMLO","DEVICE TIME OUT IN 1 SEC. UNITS"],
+'0307':["DUNUSE","UNUSED"],
+'0308':["DBYTLO","BYTE COUNT"],
+'0309':["DBYTHI","..."],
+'030A':["DAUX1","COMMAND AUXILLARY BYTES"],
+'030B':["DAUX2","..."],
+'030C':["TIMER1","INITIAL TIMER VALUE"],
+'030D':["TIMER1+1",""],
+'030E':["ADDCOR","ADDITION CORRECTION"],
+'030F':["CASFLG","CASSETTE MODE WHEN SET"],
+'0310':["TIMER2","FINAL TIME VALUE (USED TO COMPUTE BAUD RATE)"],
+'0311':["TIMER2+1",""],
+'0312':["TEMP1","TEMP LOCATIONS"],
+'0313':["TEMP2",""],
+'0314':["TEMP2","..."],
+'0315':["TEMP3","..."],
+'0316':["SAVIO","SAVE SERIAL IN DATA PORT"],
+'0317':["TIMFLG","TIME OUT FLAG FOR BAUD RATE CORRECTION"],
+'0318':["STACKP","SIO STACK POINTER SAVE LOC"],
+'0319':["TSTAT","TEMP STATUS LOC"],
+'031A':["HATABS","HANDLER ADDRESS TABLE"],
+'033D':["PUPBT1",""],
+'033E':["PUPBT2",""],
+'033F':["PUPBT3",""],
+'0340':["IOCB0","I/O CONTROL BLOCK 0"],
+'0341':["ICDNO","DEVICE NUMBER (DRIVE NUMBER)"],
+'0342':["ICCOM","COMMAND CODE"],
+'0343':["ICSTA","STATUS"],
+'0344':["ICBAL","BUFFER ADDRESS"],
+'0345':["ICBAH","..."],
+'0346':["ICPTL","PUT BYTE ROUTINE ADDRESS - 1"],
+'0347':["ICPTH","..."],
+'0348':["ICBLL","BUFFER LENGTH"],
+'0349':["ICBLH","..."],
+'034A':["ICAX1","AUXILLARY INFO"],
+'034B':["ICAX2","..."],
+'034C':["ICSPR","4 SPARE BYTES"],
+'034D':["B0-ICAX4",""],
+'034E':["B0-ICAX5",""],
+'034F':["B0-ICAX6",""],
+'0350':["IOCB1","I/O CONTROL BLOCK 1"],
+'0351':["B1-ICDNO",""],
+'0352':["B1-ICCOM",""],
+'0353':["B1-ICSTA",""],
+'0354':["B1-ICBAL",""],
+'0355':["B1-ICBAH",""],
+'0356':["B1-ICPTL",""],
+'0357':["B1-ICPTH",""],
+'0358':["B1-ICBLL",""],
+'0359':["B1-ICBLH",""],
+'035A':["B1-ICAX1",""],
+'035B':["B1-ICAX2",""],
+'035C':["B1-ICAX3",""],
+'035D':["B1-ICAX4",""],
+'035E':["B1-ICAX5",""],
+'035F':["B1-ICAX6",""],
+'0360':["IOCB2","I/O CONTROL BLOCK 2"],
+'0361':["B2-ICDNO",""],
+'0362':["B2-ICCOM",""],
+'0363':["B2-ICSTA",""],
+'0364':["B2-ICBAL",""],
+'0365':["B2-ICBAH",""],
+'0366':["B2-ICPTL",""],
+'0367':["B2-ICPTH",""],
+'0368':["B2-ICBLL",""],
+'0369':["B2-ICBLH",""],
+'036A':["B2-ICAX1",""],
+'036B':["B2-ICAX2",""],
+'036C':["B2-ICAX3",""],
+'036D':["B2-ICAX4",""],
+'036E':["B2-ICAX5",""],
+'036F':["B2-ICAX6",""],
+'0370':["IOCB3","I/O CONTROL BLOCK 3"],
+'0371':["B3-ICDNO",""],
+'0372':["B3-ICCOM",""],
+'0373':["B3-ICSTA",""],
+'0374':["B3-ICBAL",""],
+'0375':["B3-ICBAH",""],
+'0376':["B3-ICPTL",""],
+'0377':["B3-ICPTH",""],
+'0378':["B3-ICBLL",""],
+'0379':["B3-ICBLH",""],
+'037A':["B3-ICAX1",""],
+'037B':["B3-ICAX2",""],
+'037C':["B3-ICAX3",""],
+'037D':["B3-ICAX4",""],
+'037E':["B3-ICAX5",""],
+'037F':["B3-ICAX6",""],
+'0380':["IOCB4","I/O CONTROL BLOCK 4"],
+'0381':["B4-ICDNO",""],
+'0382':["B4-ICCOM",""],
+'0383':["B4-ICSTA",""],
+'0384':["B4-ICBAL",""],
+'0385':["B4-ICBAH",""],
+'0386':["B4-ICPTL",""],
+'0387':["B4-ICPTH",""],
+'0388':["B4-ICBLL",""],
+'0389':["B4-ICBLH",""],
+'038A':["B4-ICAX1",""],
+'038B':["B4-ICAX2",""],
+'038C':["B4-ICAX3",""],
+'038D':["B4-ICAX4",""],
+'038E':["B4-ICAX5",""],
+'038F':["B4-ICAX6",""],
+'0390':["IOCB5","I/O CONTROL BLOCK 5"],
+'0391':["B5-ICDNO",""],
+'0392':["B5-ICCOM",""],
+'0393':["B5-ICSTA",""],
+'0394':["B5-ICBAL",""],
+'0395':["B5-ICBAH",""],
+'0396':["B5-ICPTL",""],
+'0397':["B5-ICPTH",""],
+'0398':["B5-ICBLL",""],
+'0399':["B5-ICBLH",""],
+'039A':["B5-ICAX1",""],
+'039B':["B5-ICAX2",""],
+'039C':["B5-ICAX3",""],
+'039D':["B5-ICAX4",""],
+'039E':["B5-ICAX5",""],
+'039F':["B5-ICAX6",""],
+'03A0':["IOCB6","I/O CONTROL BLOCK 6"],
+'03A1':["B6-ICDNO",""],
+'03A2':["B6-ICCOM",""],
+'03A3':["B6-ICSTA",""],
+'03A4':["B6-ICBAL",""],
+'03A5':["B6-ICBAH",""],
+'03A6':["B6-ICPTL",""],
+'03A7':["B6-ICPTH",""],
+'03A8':["B6-ICBLL",""],
+'03A9':["B6-ICBLH",""],
+'03AA':["B6-ICAX1",""],
+'03AB':["B6-ICAX2",""],
+'03AC':["B6-ICAX3",""],
+'03AD':["B6-ICAX4",""],
+'03AE':["B6-ICAX5",""],
+'03AF':["B6-ICAX6",""],
+'03B0':["IOCB7","I/O CONTROL BLOCK 7"],
+'03B1':["B7-ICDNO",""],
+'03B2':["B7-ICCOM",""],
+'03B3':["B7-ICSTA",""],
+'03B4':["B7-ICBAL",""],
+'03B5':["B7-ICBAH",""],
+'03B6':["B7-ICPTL",""],
+'03B7':["B7-ICPTH",""],
+'03B8':["B7-ICBLL",""],
+'03B9':["B7-ICBLH",""],
+'03BA':["B7-ICAX1",""],
+'03BB':["B7-ICAX2",""],
+'03BC':["B7-ICAX3",""],
+'03BD':["B7-ICAX4",""],
+'03BE':["B7-ICAX5",""],
+'03BF':["B7-ICAX6",""],
+'03C0':["PRNBUF","PRINTER BUFFER"],
+'03E8':["SUPERF",""],
+'03E9':["CKEY",""],
+'03EA':["CASSBT",""],
+'03EB':["CARTCK",""],
+'03EC':["DERRF",""],
+'03ED':["ACMVAR",""],
+'03F8':["BASICF",""],
+'03F9':["MINTLK",""],
+'03FA':["GINTLK",""],
+'03FB':["CHLINK",""],
+'03FC':["CHLINK+1",""],
+'03FD':["CASBUF","CASSETTE BUFFER"],
+'9FFA':["R-CARTCS",""],
+'9FFB':["R-CARTCS+1",""],
+'9FFC':["R-CART",""],
+'9FFD':["R-CARTFG",""],
+'9FFE':["R-CARTAD",""],
+'9FFF':["R-CARTAD+1",""],
+'BFFA':["CARTCS",""],
+'BFFB':["CARTCS+1",""],
+'BFFC':["CART",""],
+'BFFD':["CARTFG",""],
+'BFFE':["CARTAD",""],
+'BFFF':["CARTAD+1",""],
+'D000':["M0PF",""],
+'D001':["M1PF",""],
+'D002':["M2PF",""],
+'D003':["M3PF",""],
+'D004':["P0PF",""],
+'D005':["P1PF",""],
+'D006':["P2PF",""],
+'D007':["P3PF",""],
+'D008':["M0PL",""],
+'D009':["M1PL",""],
+'D00A':["M2PL",""],
+'D00B':["M3PL",""],
+'D00C':["P0PL",""],
+'D00D':["P1PL",""],
+'D00E':["P2PL",""],
+'D00F':["P3PL",""],
+'D010':["TRIG0",""],
+'D011':["TRIG1",""],
+'D012':["TRIG2",""],
+'D013':["TRIG3",""],
+'D014':["PAL",""],
+'D015':["COLPM3",""],
+'D016':["COLPF0",""],
+'D017':["COLPF1",""],
+'D018':["COLPF2",""],
+'D019':["COLPF3",""],
+'D01A':["COLBK",""],
+'D01B':["PRIOR",""],
+'D01C':["VDELAY",""],
+'D01D':["GRACTL",""],
+'D01E':["HITCLR",""],
+'D01F':["CONSOL",""],
+'D100':["PBI",""],
+'D1FF':["PDVI",""],
+'D200':["POT0",""],
+'D201':["POT1",""],
+'D202':["POT2",""],
+'D203':["POT3",""],
+'D204':["POT4",""],
+'D205':["POT5",""],
+'D206':["POT6",""],
+'D207':["POT7",""],
+'D208':["ALLPOT",""],
+'D209':["KBCODE",""],
+'D20A':["RANDOM",""],
+'D20B':["POTGO",""],
+'D20D':["SERIN",""],
+'D20E':["IRQST",""],
+'D20F':["SKSTAT",""],
+'D300':["PORTA",""],
+'D301':["PORTB",""],
+'D302':["PACTL",""],
+'D303':["PBCTL",""],
+'D400':["DMACTL",""],
+'D401':["CHACTL",""],
+'D402':["DLISTL",""],
+'D403':["DLISTH",""],
+'D404':["HSCROL",""],
+'D405':["VSCROL",""],
+'D407':["PMBASE",""],
+'D409':["CHBASE",""],
+'D40A':["WSYNC",""],
+'D40B':["VCOUNT",""],
+'D40C':["PENH",""],
+'D40D':["PENV",""],
+'D40E':["NMIEN",""],
+'D40F':["NMIST",""],
+'D600':["PBIRAM",""],
+'D800':["AFP",""],
+'D803':["PDID1",""],
+'D805':["PDIOV",""],
+'D806':["PDIOV+1",""],
+'D808':["PDIRQV",""],
+'D809':["PDIRQV+1",""],
+'D80B':["PDID2",""],
+'D80D':["PDVV",""],
+'D8E6':["FASC",""],
+'D9AA':["IFP",""],
+'D9D2':["FPI",""],
+'DA44':["ZFR0",""],
+'DA46':["ZF1",""],
+'DA60':["FSUB",""],
+'DA66':["FADD",""],
+'DADB':["FMUL",""],
+'DB28':["FDIV",""],
+'DD40':["PLYEVL",""],
+'DD89':["FLD0R",""],
+'DD8D':["FLD0P",""],
+'DD98':["FLD1R",""],
+'DD9C':["FLD1P",""],
+'DDA7':["FST0R",""],
+'DDAB':["FST0P",""],
+'DDB6':["FMOVE",""],
+'DDC0':["EXP",""],
+'DDCC':["EXP10",""],
+'DECD':["LOG",""],
+'DED1':["LOG10",""],
+'E400':["EDITRV","EDITOR"],
+'E410':["SCRENV","TELEVISION SCREEN"],
+'E420':["KEYBDV","KEYBOARD"],
+'E430':["PRINTV","PRINTER"],
+'E440':["CASETV","CASSETTE"],
+'E450':["DISKIV","DISK INITIALIZATION"],
+'E453':["DSKINV","DISK INTERFACE"],
+'E456':["CIOV","CIO ROUTINE"],
+'E459':["SIOV","SIO ROUTINE"],
+'E45C':["SETVBV","SET VERTICAL BLANK VECTORS"],
+'E45F':["SYSVBV","SYSTEM VERTICAL BLANK ROUTINE"],
+'E462':["XITVBV","EXIT VERTICAL BLANK ROUTINE"],
+'E465':["SIOINV","SIO INIT"],
+'E468':["SENDEV","SEND ENABLE ROUTINE"],
+'E46B':["INTINV","INTERRUPT HANDLER INIT"],
+'E46E':["CIOINV","CIO INIT"],
+'E471':["BLKBDV","BLACKBOARD MODE"],
+'E474':["WARMSV","WARM START ENTRY POINT"],
+'E477':["COLDSV","COLD START ENTRY POINT"],
+'E47A':["RBLOKV",""],
+'E47D':["RBLOKV","CASSETTE READ BLOCK VECTOR"],
+'E480':["DSOPIV","CASSETTE OPEN FOR INPUT VECTOR"],
+'E483':["SLFTSV",""],
+'E486':["PHENTV",""],
+'E489':["PHUNLV",""],
+'E48C':["PHINIV",""],
+'E48F':["GPDVV",""],
+'F385':["PUTLIN","OUTPUT LINE TO IOCB#0"],
+'F6A4':["EOUTCH","OUTPUT CHAR TO SCREEN"],
+'F6E2':["KGETCH","GET CHAR FROM KEYBOARD"]
+}
+
+//===================================================================================================
+//===================================================================================================
+// 6502 disassembler derived from
+// n. landsteiner, mass:werk / electronic tradion 2005; e-tradion.net
+
+var opctab= [
+    ['BRK','imp'], ['ORA','inx'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['ORA','zpg'], ['ASL','zpg'], ['???','imp'],
+    ['PHP','imp'], ['ORA','imm'], ['ASL','acc'], ['???','imp'],
+    ['???','imp'], ['ORA','abs'], ['ASL','abs'], ['???','imp'],
+    ['BPL','rel'], ['ORA','iny'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['ORA','zpx'], ['ASL','zpx'], ['???','imp'],
+    ['CLC','imp'], ['ORA','aby'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['ORA','abx'], ['ASL','abx'], ['???','imp'],
+    ['JSR','abs'], ['AND','inx'], ['???','imp'], ['???','imp'],
+    ['BIT','zpg'], ['AND','zpg'], ['ROL','zpg'], ['???','imp'],
+    ['PLP','imp'], ['AND','imm'], ['ROL','acc'], ['???','imp'],
+    ['BIT','abs'], ['AND','abs'], ['ROL','abs'], ['???','imp'],
+    ['BMI','rel'], ['AND','iny'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['AND','zpx'], ['ROL','zpx'], ['???','imp'],
+    ['SEC','imp'], ['AND','aby'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['AND','abx'], ['ROL','abx'], ['???','imp'],
+    ['RTI','imp'], ['EOR','inx'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['EOR','zpg'], ['LSR','zpg'], ['???','imp'],
+    ['PHA','imp'], ['EOR','imm'], ['LSR','acc'], ['???','imp'],
+    ['JMP','abs'], ['EOR','abs'], ['LSR','abs'], ['???','imp'],
+    ['BVC','rel'], ['EOR','iny'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['EOR','zpx'], ['LSR','zpx'], ['???','imp'],
+    ['CLI','imp'], ['EOR','aby'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['EOR','abx'], ['LSR','abx'], ['???','imp'],
+    ['RTS','imp'], ['ADC','inx'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['ADC','zpg'], ['ROR','zpg'], ['???','imp'],
+    ['PLA','imp'], ['ADC','imm'], ['ROR','acc'], ['???','imp'],
+    ['JMP','ind'], ['ADC','abs'], ['ROR','abs'], ['???','imp'],
+    ['BVS','rel'], ['ADC','iny'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['ADC','zpx'], ['ROR','zpx'], ['???','imp'],
+    ['SEI','imp'], ['ADC','aby'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['ADC','abx'], ['ROR','abx'], ['???','imp'],
+    ['???','imp'], ['STA','inx'], ['???','imp'], ['???','imp'],
+    ['STY','zpg'], ['STA','zpg'], ['STX','zpg'], ['???','imp'],
+    ['DEY','imp'], ['???','imp'], ['TXA','imp'], ['???','imp'],
+    ['STY','abs'], ['STA','abs'], ['STX','abs'], ['???','imp'],
+    ['BCC','rel'], ['STA','iny'], ['???','imp'], ['???','imp'],
+    ['STY','zpx'], ['STA','zpx'], ['STX','zpy'], ['???','imp'],
+    ['TYA','imp'], ['STA','aby'], ['TXS','imp'], ['???','imp'],
+    ['???','imp'], ['STA','abx'], ['???','imp'], ['???','imp'],
+    ['LDY','imm'], ['LDA','inx'], ['LDX','imm'], ['???','imp'],
+    ['LDY','zpg'], ['LDA','zpg'], ['LDX','zpg'], ['???','imp'],
+    ['TAY','imp'], ['LDA','imm'], ['TAX','imp'], ['???','imp'],
+    ['LDY','abs'], ['LDA','abs'], ['LDX','abs'], ['???','imp'],
+    ['BCS','rel'], ['LDA','iny'], ['???','imp'], ['???','imp'],
+    ['LDY','zpx'], ['LDA','zpx'], ['LDX','zpy'], ['???','imp'],
+    ['CLV','imp'], ['LDA','aby'], ['TSX','imp'], ['???','imp'],
+    ['LDY','abx'], ['LDA','abx'], ['LDX','aby'], ['???','imp'],
+    ['CPY','imm'], ['CMP','inx'], ['???','imp'], ['???','imp'],
+    ['CPY','zpg'], ['CMP','zpg'], ['DEC','zpg'], ['???','imp'],
+    ['INY','imp'], ['CMP','imm'], ['DEX','imp'], ['???','imp'],
+    ['CPY','abs'], ['CMP','abs'], ['DEC','abs'], ['???','imp'],
+    ['BNE','rel'], ['CMP','iny'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['CMP','zpx'], ['DEC','zpx'], ['???','imp'],
+    ['CLD','imp'], ['CMP','aby'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['CMP','abx'], ['DEC','abx'], ['???','imp'],
+    ['CPX','imm'], ['SBC','inx'], ['???','imp'], ['???','imp'],
+    ['CPX','zpg'], ['SBC','zpg'], ['INC','zpg'], ['???','imp'],
+    ['INX','imp'], ['SBC','imm'], ['NOP','imp'], ['???','imp'],
+    ['CPX','abs'], ['SBC','abs'], ['INC','abs'], ['???','imp'],
+    ['BEQ','rel'], ['SBC','iny'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['SBC','zpx'], ['INC','zpx'], ['???','imp'],
+    ['SED','imp'], ['SBC','aby'], ['???','imp'], ['???','imp'],
+    ['???','imp'], ['SBC','abx'], ['INC','abx'], ['???','imp']
+];
+
+var addrtab= {
+    acc:'A',
+    abs:'abs',
+    abx:'abs,X',
+    aby:'abs,Y',
+    imm:'#',
+    imp:'impl',
+    ind:'ind',
+    inx:'X,ind',
+    iny:'ind,Y',
+    rel:'rel',
+    zpg:'zpg',
+    zpx:'zpg,X',
+    zpy:'zpg,Y'
+}
+
+var steptab = {
+    imp:1,
+    acc:1,
+    imm:2,
+    abs:3,
+    abx:3,
+    aby:3,
+    zpg:2,
+    zpx:2,
+    zpy:2,
+    ind:3,
+    inx:2,
+    iny:2,
+    rel:2
+};
+
+// functions
+function disassembleStep(pc,ram,asm)
+{
+    var instr, op1, op2, addr, ops, disas, adm, step;
+    var symbol;
+
+    // get instruction and ops, inc pc
+    function u8(i) {
+        return ram[i];
+    }
+    instr=u8(pc);
+    addr=hex(pc,4);
+    ops=hex(instr);
+    disas=opctab[instr][0];
+    adm=opctab[instr][1];
+    step=steptab[adm];
+    if (step>1) {
+        op1=hex(u8(pc+1));
+        if (step>2) op2=hex(u8(pc+2));
+    }
+
+    // format and output to listing
+    switch (adm) {
+        case 'imm' :
+            ops+=' '+op1+'   ';
+            disas+=' #$'+op1;
+            break;
+        case 'zpg' :
+            ops+=' '+op1+'   ';
+            disas+=' $'+op1;
+            break;
+        case 'acc' :
+            ops+='      ';
+            disas+=' A';
+            break;
+        case 'abs' :
+            ops+=' '+op1+' '+op2;
+            disas+=' $'+op2+op1;
+            break;
+        case 'zpx' :
+            ops+=' '+op1+'   ';
+            disas+=' $'+op1+',X';
+            break;
+        case 'zpy' :
+            ops+=' '+op1+'   ';
+            disas+=' $'+op1+',Y';
+            break;
+        case 'abx' :
+            ops+=' '+op1+' '+op2;
+            disas+=' $'+op2+op1+',X';
+            break;
+        case 'aby' :
+            ops+=' '+op1+' '+op2;
+            disas+=' $'+op2+op1+',Y';
+            break;
+        case 'iny' :
+            ops+=' '+op1+'   ';
+            disas+=' ($'+op1+'),Y';
+            break;
+        case 'inx' :
+            ops+=' '+op1+'   ';
+            disas+=' ($'+op1+',X)';
+            break;
+        case 'rel' :
+            var opv=u8(pc+1);
+            var targ=pc+2;
+            if (opv&128) {
+                targ-=(opv^255)+1;
+            }
+            else {
+                targ +=opv;
+            }
+            targ&=0xffff;
+            ops+=' '+op1+'   ';
+            disas+=' $'+hex(targ,4);
+            break;
+        case 'ind' :
+            ops+=' '+op1+' '+op2;
+            disas+=' ($'+op2+op1+')';
+            break;
+        default :
+            ops+='      ';
+    }
+
+    // add symbols
+    switch (adm) {
+        case 'zpg' :
+        case 'zpx' :
+        case 'zpy' :
+        case 'inx' :
+        case 'iny' :
+            symbol = _syms_zp[op1];
+            break;
+
+        case 'abs' :
+        case 'abx' :
+        case 'aby' :
+        case 'ind' :
+            if (op2 == '00')
+                symbol = _syms_zp[op1];
+            else
+                symbol = _syms_[op2+op1];
+            break;
+    }        
+    if (ops=='')
+        ops='        ';
+    asm.push({pc:pc,instr:instr,valid:instr && disas != '???',
+        s:addr+'   '+ops+'   '+disas + (symbol ? " ; " + symbol[0] + " <i>" +  symbol[1] + "</i>": "")});
+    return (pc+step)&0xffff;
+}
+
+function dis(addr,data,i,len)
+{
+    function mark_as_data(i,to)
+    {
+        while (--i) {
+            var a = asm[i];
+            if (a.pc && (a.pc < to))
+                break;
+            asm[i].valid = -1;
+        }
+    }
+
+    var asm = [];
+    var ram = [];
+    var stat = [];
+    for (var j = 0; j < len; j++)
+        ram[addr+j] = data[i+j];
+
+    var pc = addr;
+    var bad_count = 0;
+    var good_count = 0;
+    var bad_run = 0;
+    var good_run = 0;
+    var repeated = 0;
+    var last = 0;
+    var mark = pc;
+    while (pc < (addr+len)) {
+        pc = disassembleStep(pc,ram,asm);
+        var s = asm[asm.length-1];
+
+        if (s.instr == last) {
+            repeated++;
+        } else {
+            if ((repeated > 2) && (last == 0x40 || last == 0x60))
+                mark_as_data(asm.length,asm[asm.length-repeated].pc);    // data pretending to be rts/rti
+            repeated = 0;
+            last = s.instr;
+        }
+
+        if (s.valid) {
+            good_count++;
+            good_run++;
+            bad_run = 0;
+        }
+        else {
+            bad_count++;
+            bad_run++;
+            good_run = 0;
+        }
+
+        switch (s.instr) {
+            case 0x40: // RTO
+            case 0x4C: // JMP
+            case 0x60: // RTS
+                s.block_end = 1;
+                break;
+        }
+
+        if (s.block_end)  {
+            if (bad_count)
+                mark_as_data(asm.length - good_run,mark);    // backup to the last mark
+            mark = pc;
+            good_count = good_run = bad_count = bad_run = 0;
+        }
+    }
+
+    function flush(from,to)
+    {
+        str.push("; Data " + hex(from,4) + " to " +  hex(to-1,4) + " (" + (to-from) + " bytes)");
+        while (from < to) {
+            var mx = 16 - (from & 0xF);
+            var n = Math.min(mx,to-from);
+            var s = hex(from,4) + "  ";
+            while (n--)
+                s += hex(ram[from++]) + " ";
+            str.push(s);
+        }
+        str.push("");
+    }
+
+    var str = ["; Disassembly of " + hex(addr,4) + " to " + hex(addr+len-1,4)];
+    var data = null;
+    asm.forEach(a => {
+        if (a.valid != -1) {
+            if (data)
+                flush(data.pc,a.pc);
+            data = null;
+            str.push(a.s);
+            if (a.block_end)
+                str.push("");
+        } else {
+            if (!data)
+                data = {pc:a.pc};
+        }
+    });
+    if (data)
+        flush(data.pc,asm[asm.length-1].pc);
+    return str;
+}
+
+// eof
+
+//===================================================================================================
+//===================================================================================================
+
+function le16(a,i)
+{
+	return a[i] | ((a[i+1]) << 8);
+}
+
+function toAscii(a,i,len)
+{
+	var s = '';
+	while (len--)
+		s += String.fromCharCode(a[i++]);
+	return s;
+}
+
+function err(e)
+{
+	_m("#err","#toc",{err:e});
+}
+
+function ataritext(a)
+{
+	var s = '';
+    var lst = [];
+	for (var i = 0; i < a.length; i++) {
+		if (a[i] == 0x9B) {
+            lst.push(s);
+            s = '';
+		} else
+			s += String.fromCharCode(a[i]);
+	}
+    if (s.length)
+        lst.push(s);
+	return lst;
+}
+
+function show_bas(f)
+{
+    var t = ataribasic(f.data,0,f.data.length);
+    show_ataritext(f,t.listing);
+}
+
+function show_lst(f)
+{
+    var t = ataritext(f.data,0,f.data.length);
+    show_ataritext(f,t);
+}
+
+function get_ext(name,a)
+{
+    var i = name.lastIndexOf(".");
+    if (i != -1) {
+        var ext = name.substr(i+1).toLowerCase();
+        if (ext == "bas" || ext == "lst" || ext == "xex" || ext == "atr" || ext == "sys")
+            return ext;
+    }
+    var sig = le16(a,0);
+    if (sig == 0x296)
+        return "atr";
+
+    if (ataribasic(a,0,a.length))
+        return "bas";
+
+    var s='';
+    for (var i = 0; i < a.length; i++)
+        s += String.fromCharCode(a[i]);
+    if ((s.indexOf("REM") != -1) || (s.indexOf("GOTO") != -1) || (s.indexOf("THEN") != -1))
+        return "lst";
+
+    return "dat";
+}
+
+var _id = 1;
+var _containers = [];
+function get_file(id)
+{
+    var f;
+    _containers.forEach(c => c.files.forEach(i => { if(i.id == id) f = i}));
+    return f;
+}
+
+var _shown;
+function save(as_lst)
+{
+    var f = _shown;
+    if (as_lst && f.ext == "bas")
+    {
+        var b = ataribasic(f.data,0,f.data.length);
+        var n = f.file_name;
+        if (n.substr(n.length-4).toLowerCase() == ".bas")
+            n = n.substr(0,n.length-4);     // trim ".BAS"
+        saveByteArray(n+".LST",b.lst);
+    } else
+        saveByteArray(f.file_name,f.data);
+}
+
+function xex_dump(name,a,i,len)
+{
+    var lines = [];
+    lines.push("; xex file " + name + " is " + len + " bytes");
+    var e = len+i;
+    while (i < e) {
+        var start = 0xFFFF;
+        var end = 0xFFFF;
+        var addr = 0xFFFF;
+        while (start == 0xFFFF) {
+            start = le16(a,i);
+            i += 2;
+        }
+        end = le16(a,i);
+        i += 2;
+
+        var s = '';
+        var slen = end+1-start;
+        if (i + slen > e) {
+            lines.push("; invalid xex segment ");
+            break;
+        }
+
+        s = hex(slen,4) + " at " + hex(start,4) + ":" +  hex(end,4);
+        lines.push("; xex segment " + s);
+
+        if (slen == 2 && (start == 0x2E0 || start == 0x2E2)) {
+            s = (start == 0x2E0 ? "run":"ini") + ":" + hex(addr,4);
+            addr = le16(a,i);
+            lines.push("; " + (start == 0x2E0 ? "run":"initialize") + " at " + hex(addr,4));
+            lines.push("");
+        } else {
+            var asm = dis(start,a,i,slen);  // disassemble segment
+            asm.forEach(line => lines.push(line));
+        }
+        i += end+1 - start;
+    }
+    return lines.join("\n");
+}
+
+function show(id)
+{
+	var f = get_file(id);
+    _shown = f;
+    switch (f.ext) {
+        case "bas":
+            show_bas(f);
+            break;
+        case "lst":
+        case "doc":
+            show_lst(f);
+            break;
+        case "xex":
+        case "sys":
+            render_file(f);
+            _h("#show",xex_dump(f.file_name,f.data,0,f.data.length));
+            break;
+        default:
+            render_file(f);
+            _h("#show",hex_dump(f.data,0,f.data.length));
+    }
+}
+
+function load_data(name,a)
+{
+	// http://www.atarimax.com/jindroush.atari.org/afmtatr.html
+    var ext = get_ext(name,a);
+
+	if (ext != "atr") {        // not an atr file
+        var f = {file_name:name,name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7};
+        _containers.push({name:name,ext:ext,data:a,files:[f]});         // single file
+	} else {
+        // it is an atr file
+        function sector_offset(n)
+        {
+            if (n <= 3)
+                return 16 + n*0x80;     // header is 16 bytes
+            return 16 + 3*0x80 + (n-3)*atr.sector_size;
+        }
+
+        function file_read(f)
+        {
+            var ss = atr.sector_size;
+            var data = [];
+            var count = f.total;
+            var sector = f.start;
+            var a = atr.data;
+            while (count--) {
+                var i = sector_offset(sector);
+                var len = a[i+(ss-1)];
+                for (var k = 0; k < len; k++)
+                    data.push(a[i + k]);
+                var num = a[i+(ss-3)] >> 2;
+                if (num != f.number)
+                    return null;
+                var next = ((a[i+(ss-3)] & 0x3) << 8) | (a[i+(ss-2)]);
+                sector = next-1;
+            }
+            return new Uint8Array(data);
+        }
+
+        var atr = {data:a,name:name};
+    	atr.size = le16(a,2) << 4;
+    	atr.sector_size = le16(a,4);
+    	atr.size += a[6] << 16;
+
+    	//	dump contents
+    	//	http://atari.kensclassics.org/dos.htm
+        var files = [];
+        var num = 0;
+    	for (var s = 360; s < 368; s++) {
+    		var i = sector_offset(s);
+    		for (var e = 0; e < atr.sector_size/16; e++) {
+    			var f = {flags:a[i],total:le16(a,i+1),start:le16(a,i+3)-1};
+    			f.number = num++;
+    			if (f.flags & 0x40) {
+                    f.file_name = toAscii(a,i+5,8).trim() + "." + toAscii(a,i+13,3).trim();
+                    f.name = toAscii(a,i+5,11).trim();
+                    f.data = file_read(f);
+                    if (f.data) {
+                        f.id = _id++;
+                        f.ext = get_ext(f.file_name,f.data);
+                        files.push(f);
+                    }
+    			}
+    			i += 16;
+    		}
+    	}
+        _containers.push({name:name,length:a.length,data:a,ext:"atr",files:files});
+    }
+}
+
+//===================================================================================================
+//===================================================================================================
+// https://www.atarimagazines.com/software/software.html
+
+function load()
+{
+    drop_init(_q("body"),function(file,ab) {
+    	load_data(file.name,new Uint8Array(ab));
+        render_state(_containers);
+        show(_containers[_containers.length-1].files[0].id);    // select one
+    });
+    get_font();
+}
+
+function render_state(m)
+{
+    var h = m.map(container => 
+        `<div><div class='info'>${finfo(container)}</div>
+            <ul id="menu">
+            ${container.files.map(file => 
+                `<li onclick="show(${file.id})">
+                    <canvas id="canvas${file.id}"></canvas>
+                </li>`
+            ).join("")}
+            </ul>
+        </div>`
+    ).join("");
+    _h("#menu_container",h);
+
+    function info(f)
+    {
+        var s = '' + f.total;
+        while (s.length < 3)
+            s = '0' + s;
+        var n = f.name;
+        while (n.length < 12)
+            n += ' ';
+        var locked = f.flags & 0x20 ? "*" : " ";
+        return "  " + locked + " " + n + s + "  ";
+    }
+
+    m.forEach(container => {
+        container.files.forEach(file => draw_line(`#canvas${file.id}`,info(file)));
+    });
+}
+
+function render_file(f)
+{
+    var lst = f.ext == "bas" ||  f.ext == "lst";
+    _h("#tabs",
+        `<div class='info'>
+            ${finfo(f)}
+            ${lst ? `<button style="float:right;" onclick="save(1)">Save As LST</button>` : ""}
+            <button style="float:right;" onclick="save(0)">Download</button>
+        </div>
+        <div id="file">${lst ? `<canvas id="show"></canvas>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
+    );
+}
+
+</script>
+
+
+<body>
+<header>
+<h2>ATR Image Explorer</h2>
+<br/>
+</header>
+<div style="display:flex;flex-direction:row">
+<nav style="min-width:336px; margin-right:8px;" id="toc">
+<div id="menu_container" ><h2 style="text-align:center;color:#AAA">Drag Files Here<br/>(ATR,BAS,LST,XEX)</h2></div>
+<p style="text-align:center;"><a style="color:#AAA" href="https://github.com/rossumur/esp_8_bit">https://github.com/rossumur/esp_8_bit</a></p>
+</nav>
+<main style="border:solid 1px #CCC">
+    <div id="tabs"></div>
+</main>
+</div>
+<script>load()</script>
+</body>
+</html>
