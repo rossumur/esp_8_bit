@@ -121,28 +121,6 @@ var _txt = function(q) {
 	return _q(q).innerText;
 };
 
-
-function _t(s,d)
-{
-	for(var p in d)
-		s=s.replace(new RegExp('{{'+p+'}}','g'), d[p]);
-	return s;
-}
-
-function _m(src,dst,obj)
-{
-	src = _q(src);
-	dst = _q(dst);
-	if (src && dst)
-		dst.innerHTML = _t(src.innerText,obj);
-}
-
-function vis(e,on)
-{
-	e.style.visibility = on ? "visible" : "hidden";
-	return on;
-}
-
 function stop()
 {
 	event.preventDefault();
@@ -157,34 +135,7 @@ function get(url,cb,d)
 	},d);
 }
 
-function display(url,src,dst)
-{
-	get(url,function(o) {
-		_m(src,dst,o);
-	});
-}
-
-function repeat(tmpl,list)
-{
-	var tmpl = _q(tmpl).innerText;	// 
-	var s = [];
-	for (var i in list)
-		s.push(_t(tmpl,list[i]));
-	return s.join('');
-}
-
-function download(blob, filename)
-{
-    var url = (window.URL || window.webkitURL).createObjectURL(blob);
-    var link = window.document.createElement('a');
-    link.href = url;
-    link.download = filename || 'output.png';
-    var click = document.createEvent("Event");
-    click.initEvent("click", true, true);
-    link.dispatchEvent(click);
-}
-
-function saveByteArray(name, data)
+function save_bytes(name, data)
 {
     var blob = new Blob([data], {type: "application/data"});
     var link = document.createElement('a');
@@ -192,13 +143,6 @@ function saveByteArray(name, data)
     link.download = name;
     link.click();
 };
-
-
-function toggle(el)
-{
-    el = _q(el);
-    el.style.display = (el.style.display != 'none' ? 'none' : '' );
-}
 
 var _hex = "0123456789ABCDEF";
 function hex(i,len)
@@ -318,24 +262,6 @@ function draw_line(id,txt)
     c.height = 8;
     var ctx = c.getContext('2d');
     draw(ctx,txt,0,0);
-}
-
-function ftype(f)
-{
-    switch (f.ext) {
-        case "bas": return "Atari Basic";
-        case "lst": return "Atari Basic Listing";
-        case "xex": return "Executable";
-        case "sys": return "System";
-        case "atr": return "ATR Disk Image";
-        case "bin": return "Binary";
-    }
-    return f.ext + " file";
-}
-
-function finfo(f)
-{
-    return `<b>${f.name}</b><br/>(${f.data.length} bytes) ${ftype(f)}`;
 }
 
 // show an array of atari text
@@ -1928,18 +1854,31 @@ function show_bas(f)
     show_ataritext(f,t.listing);
 }
 
-function show_lst(f)
+function show_txt(f)
 {
     var t = ataritext(f.data,0,f.data.length);
     show_ataritext(f,t);
 }
+
+var _exts = {
+    "bas": {name:"Atari Basic", is_txt:true },
+    "lst": {name:"Atari Basic Listing", is_txt:true },
+    "asm": {name:"Assembly Listing", is_txt:true },
+    "lis": {name:"Listing", is_txt:true },
+    "doc": {name:"Document", is_txt:true },
+
+    "sys": {name:"System", is_code:true },
+    "xex": {name:"Executable", is_code:true },
+    "com": {name:"Executable", is_code:true },
+    "atr": {name:"ATR Disk Image"},
+};
 
 function get_ext(name,a)
 {
     var i = name.lastIndexOf(".");
     if (i != -1) {
         var ext = name.substr(i+1).toLowerCase();
-        if (ext == "bas" || ext == "lst" || ext == "xex" || ext == "atr" || ext == "sys")
+        if (_exts[ext])
             return ext;
     }
     var sig = le16(a,0);
@@ -1977,9 +1916,9 @@ function save(as_lst)
         var n = f.file_name;
         if (n.substr(n.length-4).toLowerCase() == ".bas")
             n = n.substr(0,n.length-4);     // trim ".BAS"
-        saveByteArray(n+".LST",b.lst);
+        save_bytes(n+".LST",b.lst);
     } else
-        saveByteArray(f.file_name,f.data);
+        save_bytes(f.file_name,f.data);
 }
 
 function xex_dump(name,a,i,len)
@@ -2026,23 +1965,23 @@ function show(id)
 {
 	var f = get_file(id);
     _shown = f;
-    switch (f.ext) {
-        case "bas":
-            show_bas(f);
-            break;
-        case "lst":
-        case "doc":
-            show_lst(f);
-            break;
-        case "xex":
-        case "sys":
-            render_file(f);
-            _h("#show",xex_dump(f.file_name,f.data,0,f.data.length));
-            break;
-        default:
-            render_file(f);
-            _h("#show",hex_dump(f.data,0,f.data.length));
+    if (f.ext == "bas") {
+        show_bas(f);
+        return;
     }
+
+    var e = _exts[f.ext];
+    if (e && e.is_txt) {
+        show_txt(f);
+        return;
+    }
+
+    render_file(f);
+    if (e && e.is_code) {
+        _h("#show",xex_dump(f.file_name,f.data,0,f.data.length));
+        return;
+    }
+    _h("#show",hex_dump(f.data,0,f.data.length));
 }
 
 function load_data(name,a)
@@ -2128,6 +2067,12 @@ function load()
     get_font();
 }
 
+function finfo(f)
+{
+    var t = _exts[f.ext] ? _exts[f.ext].name : "'" + f.ext + "' file";
+    return `<b>${f.name}</b><br/>(${f.data.length} bytes) ${t}`;
+}
+
 function render_state(m)
 {
     var h = m.map(container => 
@@ -2162,14 +2107,14 @@ function render_state(m)
 
 function render_file(f)
 {
-    var lst = f.ext == "bas" ||  f.ext == "lst";
+    var txt = _exts[f.ext] ? _exts[f.ext].is_txt : 0;
     _h("#tabs",
         `<div class='info'>
             ${finfo(f)}
-            ${lst ? `<button style="float:right;" onclick="save(1)">Save As LST</button>` : ""}
+            ${txt ? `<button style="float:right;" onclick="save(1)">Save As LST</button>` : ""}
             <button style="float:right;" onclick="save(0)">Download</button>
         </div>
-        <div id="file">${lst ? `<canvas id="show"></canvas>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
+        <div id="file">${txt ? `<canvas id="show"></canvas>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
     );
 }
 
