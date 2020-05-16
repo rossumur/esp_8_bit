@@ -635,10 +635,24 @@ function ataribasic(a,i,len)
 
 	var vvt_begin = i + b.vvt;	// NOT SURE WHY THESE ARE +1
 	var tokens_begin = i + b.stmtab;
+    var vid = 0;
 	for (var j = vvt_begin; j < tokens_begin; j += 8) {
-		var v= {
-			name:b.variable_names[a[j+1]]
-		}
+        var v = {name:b.variable_names[a[j+1]]};
+
+        if (!v.name) {  // someone got rid of all the variable names. make new ones
+            var ch = String.fromCharCode(65+(vid % 26));    // 'A'
+            var n = Math.floor(vid++/26);
+            if (n)
+                ch += n+1;                              // A,B,C ... A2,B2...
+            switch (a[j]) {
+                case 0x80:
+                case 0x81:
+                    ch += '$';
+                    break;
+            }
+            b.variable_names[a[j+1]] = v.name = ch;     // make up a name if missing
+        }
+
 		var p0 = le16(a,j+2);
 		var p1 = le16(a,j+4);
 		var p2 = le16(a,j+6);
