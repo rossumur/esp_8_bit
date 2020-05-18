@@ -2203,39 +2203,46 @@ function save(as_lst)
 function xex_dump(name,a,i,len)
 {
     var lines = [];
-    lines.push("; xex file " + name + " is " + len + " bytes");
-    var e = len+i;
-    while (i < e) {
-        var start = 0xFFFF;
-        var end = 0xFFFF;
-        var addr = 0xFFFF;
-        while (start == 0xFFFF) {
-            start = le16(a,i);
+    if (le16(a,i) != 0xFFFF)
+    {
+        lines.push("; file " + name + " is " + len + " bytes");
+        var asm = dis(0x600,a,i,len);  // disassemble all of it
+        asm.forEach(line => lines.push(line));
+    } else {
+        lines.push("; xex file " + name + " is " + len + " bytes");
+        var e = len+i;
+        while (i < e) {
+            var start = 0xFFFF;
+            var end = 0xFFFF;
+            var addr = 0xFFFF;
+            while (start == 0xFFFF) {
+                start = le16(a,i);
+                i += 2;
+            }
+            end = le16(a,i);
             i += 2;
-        }
-        end = le16(a,i);
-        i += 2;
 
-        var s = '';
-        var slen = end+1-start;
-        if (i + slen > e) {
-            lines.push("; invalid xex segment ");
-            break;
-        }
+            var s = '';
+            var slen = end+1-start;
+            if (i + slen > e) {
+                lines.push("; invalid xex segment ");
+                break;
+            }
 
-        s = slen + " bytes at " + hex(start,4) + ":" +  hex(end,4);
-        lines.push("; xex segment " + s);
+            s = slen + " bytes at " + hex(start,4) + ":" +  hex(end,4);
+            lines.push("; xex segment " + s);
 
-        if (slen == 2 && (start == 0x2E0 || start == 0x2E2)) {
-            s = (start == 0x2E0 ? "run":"ini") + ":" + hex(addr,4);
-            addr = le16(a,i);
-            lines.push("; " + (start == 0x2E0 ? "run":"initialize") + " at " + hex(addr,4));
-            lines.push("");
-        } else {
-            var asm = dis(start,a,i,slen);  // disassemble segment
-            asm.forEach(line => lines.push(line));
+            if (slen == 2 && (start == 0x2E0 || start == 0x2E2)) {
+                s = (start == 0x2E0 ? "run":"ini") + ":" + hex(addr,4);
+                addr = le16(a,i);
+                lines.push("; " + (start == 0x2E0 ? "run":"initialize") + " at " + hex(addr,4));
+                lines.push("");
+            } else {
+                var asm = dis(start,a,i,slen);  // disassemble segment
+                asm.forEach(line => lines.push(line));
+            }
+            i += end+1 - start;
         }
-        i += end+1 - start;
     }
     return lines.join("\n");
 }
@@ -2317,9 +2324,12 @@ function load_data(name,a)
                 var i = sector_offset(sector);
                 var len = a[i+(ss-1)];
                 var num = a[i+(ss-3)] >> 2;
-                console.log("file:" + f.number + " " + len + " bytes of file " + num + " at sector " + sector + "(" + count + " remaining)");
-                if (num != f.number)
-                    return null;
+                if (f.number == -1)
+                    f.number  = num;
+                else {
+                    if (num != f.number)
+                        return null;
+                }
                 for (var k = 0; k < len; k++)
                     data.push(a[i + k]);
                 var next = ((a[i+(ss-3)] & 0x3) << 8) | (a[i+(ss-2)]);
@@ -2341,10 +2351,10 @@ function load_data(name,a)
     		var i = sector_offset(s);
     		for (var e = 0; e < atr.sector_size/16; e++) {
     			var f = {flags:a[i],total:le16(a,i+1),start:le16(a,i+3)-1};
-    			f.number = num++;
     			if (f.flags & 0x40) {
                     f.file_name = toAscii(a,i+5,8).trim() + "." + toAscii(a,i+13,3).trim();
                     f.name = toAscii(a,i+5,11).trim();
+                    f.number = -1;
                     f.data = file_read(f);
                     if (f.data) {
                         f.id = _id++;
