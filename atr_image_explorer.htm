@@ -20,6 +20,10 @@ canvas {
     transform-origin: 0px 2px;
     transform:scale(2);
 }
+.zoomed2 {
+    transform-origin: 0px 2px;
+    transform:scale(4,2);
+}
 nav {
     border: solid 1px #CCC;
     background: #CCF;
@@ -301,6 +305,90 @@ function get_font(src)
     return canvas;
 }
 
+var atari_palette_rgb = [
+    0x00000000,0x000F0F0F,0x001B1B1B,0x00272727,0x00333333,0x00414141,0x004F4F4F,0x005E5E5E,
+    0x00686868,0x00787878,0x00898989,0x009A9A9A,0x00ABABAB,0x00BFBFBF,0x00D3D3D3,0x00EAEAEA,
+    0x00001600,0x000F2100,0x001A2D00,0x00273900,0x00334500,0x00405300,0x004F6100,0x005D7000,
+    0x00687A00,0x00778A17,0x00899B29,0x009AAC3B,0x00ABBD4C,0x00BED160,0x00D2E574,0x00E9FC8B,
+    0x001C0000,0x00271300,0x00331F00,0x003F2B00,0x004B3700,0x00594500,0x00675300,0x00756100,
+    0x00806C12,0x008F7C22,0x00A18D34,0x00B29E45,0x00C3AF56,0x00D6C36A,0x00EAD77E,0x00FFEE96,
+    0x002F0000,0x003A0000,0x00460F00,0x00521C00,0x005E2800,0x006C3600,0x007A4416,0x00885224,
+    0x00925D2F,0x00A26D3F,0x00B37E50,0x00C48F62,0x00D6A073,0x00E9B487,0x00FDC89B,0x00FFDFB2,
+    0x00390000,0x00440000,0x0050000A,0x005C0F17,0x00681B23,0x00752931,0x0084373F,0x0092464E,
+    0x009C5058,0x00AC6068,0x00BD7179,0x00CE838A,0x00DF949C,0x00F2A7AF,0x00FFBBC3,0x00FFD2DA,
+    0x00370020,0x0043002C,0x004E0037,0x005A0044,0x00661350,0x0074215D,0x0082306C,0x00903E7A,
+    0x009B4984,0x00AA5994,0x00BC6AA5,0x00CD7BB6,0x00DE8CC7,0x00F1A0DB,0x00FFB4EF,0x00FFCBFF,
+    0x002B0047,0x00360052,0x0042005E,0x004E006A,0x005A1276,0x00672083,0x00762F92,0x00843DA0,
+    0x008E48AA,0x009E58BA,0x00AF69CB,0x00C07ADC,0x00D18CED,0x00E59FFF,0x00F9B3FF,0x00FFCAFF,
+    0x0016005F,0x0021006A,0x002D0076,0x00390C82,0x0045198D,0x0053279B,0x006135A9,0x006F44B7,
+    0x007A4EC2,0x008A5ED1,0x009B6FE2,0x00AC81F3,0x00BD92FF,0x00D0A5FF,0x00E4B9FF,0x00FBD0FF,
+    0x00000063,0x0000006F,0x00140C7A,0x00201886,0x002C2592,0x003A329F,0x004841AE,0x00574FBC,
+    0x00615AC6,0x00716AD6,0x00827BE7,0x00948CF8,0x00A59DFF,0x00B8B1FF,0x00CCC5FF,0x00E3DCFF,
+    0x00000054,0x00000F5F,0x00001B6A,0x00002776,0x00153382,0x00234190,0x0031509E,0x00405EAC,
+    0x004A68B6,0x005A78C6,0x006B89D7,0x007D9BE8,0x008EACF9,0x00A1BFFF,0x00B5D3FF,0x00CCEAFF,
+    0x00001332,0x00001E3E,0x00002A49,0x00003655,0x00004261,0x0012506F,0x00205E7D,0x002F6D8B,
+    0x00397796,0x004987A6,0x005B98B7,0x006CA9C8,0x007DBAD9,0x0091CEEC,0x00A5E2FF,0x00BCF9FF,
+    0x00001F00,0x00002A12,0x0000351E,0x0000422A,0x00004E36,0x000B5B44,0x00196A53,0x00287861,
+    0x0033826B,0x0043927B,0x0054A38C,0x0065B49E,0x0077C6AF,0x008AD9C2,0x009EEDD6,0x00B5FFED,
+    0x00002400,0x00003000,0x00003B00,0x00004700,0x0000530A,0x00106118,0x001E6F27,0x002D7E35,
+    0x00378840,0x00479850,0x0059A961,0x006ABA72,0x007BCB84,0x008FDE97,0x00A3F2AB,0x00BAFFC2,
+    0x00002300,0x00002F00,0x00003A00,0x00004600,0x00115200,0x001F6000,0x002E6E00,0x003C7C12,
+    0x0047871C,0x0057972D,0x0068A83E,0x0079B94F,0x008ACA61,0x009EDD74,0x00B2F189,0x00C9FFA0,
+    0x00001B00,0x00002700,0x000F3200,0x001C3E00,0x00284A00,0x00365800,0x00446600,0x00527500,
+    0x005D7F00,0x006D8F19,0x007EA02B,0x008FB13D,0x00A0C24E,0x00B4D662,0x00C8EA76,0x00DFFF8D,
+    0x00110E00,0x001D1A00,0x00292500,0x00353100,0x00413D00,0x004F4B00,0x005D5A00,0x006B6800,
+    0x0076720B,0x0085821B,0x0097932D,0x00A8A43E,0x00B9B650,0x00CCC963,0x00E0DD77,0x00F7F48F,
+];
+// render mic graphics
+function render_mic(canvas,mid)
+{
+    var has_palette = false;
+    var height = 192;
+    switch (mid.length) {
+        case 7684:
+            has_palette = true;
+            break;
+        case 9604:
+            has_palette = true;
+        case 9600:
+            height = 240;
+            break;    
+    }
+
+    canvas.width = 160;
+    canvas.height = height;
+    var palette = new Uint32Array(4);
+    if (has_palette) {
+        for (var p = 0; p < 4; p++)
+            palette[p] = atari_palette_rgb[mid[mid.length-4+p]];
+    } else {
+        for (var p = 0; p < 4; p++)
+            palette[p] = atari_palette_rgb[p*5];
+    }
+
+    var ctx = canvas.getContext('2d');
+    var pix = ctx.getImageData(0,0,160,height);
+    var d = pix.data;
+    var src = 0;
+    var i = 0;
+    for (var y = 0; y < height; y++) {
+        for (var x = 0; x < 160; x += 4) {
+            var b = mid[src++];
+            for (var j = 0; j < 4; j++) {
+                var c = palette[(b >> 6) & 0x3];
+                b <<= 2;
+                d[i+0] = (c >> 16) & 0xFF;
+                d[i+1] = (c >> 8) & 0xFF;
+                d[i+2] = c & 0xFF;
+                d[i+3] = 0xFF;
+                i += 4;
+            }
+        }
+    }
+    ctx.putImageData(pix,0,0);
+    return canvas;
+}
+
 // make an atari line of text to look like dir
 function draw_line(id,txt)
 {
@@ -343,10 +431,11 @@ function radio_changed(name,v)
     }
 }
 
-function resize_parent(e,z)
+function resize_parent(e,sx,sy)
 {
-    e.parentNode.style.width = e.width*z + "px";
-    e.parentNode.style.height = e.height*z + "px";
+    sy = sy || sx;
+    e.parentNode.style.width = e.width*sx + "px";
+    e.parentNode.style.height = e.height*sy + "px";
 }
 
 function show_ataritext(f,lst,font)
@@ -1974,6 +2063,16 @@ function show_txt(f)
     show_ataritext(f,t);
 }
 
+// 160*192 2 bit + 4 byte csum
+function show_mic(f)
+{
+    render_file(f);
+    var c = _q("#show");
+    render_mic(c,f.data);
+    c.classList.add("zoomed2");
+    resize_parent(c,4,2);
+}
+
 // https://github.com/TheRobotFactory/EightBit-Atari-Fonts
 function show_fnt(f)
 {
@@ -2039,6 +2138,9 @@ var _exts = {
     "txt": {name:"Text File", is_txt:true },
 
     "fnt": {name:"Font File", is_txt:true },
+    "set": {name:"Font File", is_txt:true },
+
+    "mic": {name:"Micropainter Image", is_img:true },
 
     "sys": {name:"System", is_code:true },
     "xex": {name:"Executable", is_code:true },
@@ -2147,8 +2249,13 @@ function show(id)
         return;
     }
 
-    if (f.ext == "fnt") {
+    if (f.ext == "fnt" || f.ext == "set") {
         show_fnt(f);
+        return;
+    }
+
+    if (f.ext == "mic") {
+        show_mic(f);
         return;
     }
 
@@ -2191,29 +2298,30 @@ function load_data(name,a)
         var f = {file_name:name,name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7};
         _containers.unshift({name:name,ext:ext,data:a,files:[f],id:_container_id++});         // single file
 	} else {
-        // it is an atr file
+        // zero based sector offsets
         function sector_offset(n)
         {
-            if (n <= 3)
+            if (n < 3)
                 return 16 + n*0x80;     // header is 16 bytes
             return 16 + 3*0x80 + (n-3)*atr.sector_size;
         }
 
         function file_read(f)
         {
-            var ss = atr.sector_size;
             var data = [];
+            var ss = atr.sector_size;
             var count = f.total;
             var sector = f.start;
             var a = atr.data;
             while (count--) {
                 var i = sector_offset(sector);
                 var len = a[i+(ss-1)];
-                for (var k = 0; k < len; k++)
-                    data.push(a[i + k]);
                 var num = a[i+(ss-3)] >> 2;
+                console.log("file:" + f.number + " " + len + " bytes of file " + num + " at sector " + sector + "(" + count + " remaining)");
                 if (num != f.number)
                     return null;
+                for (var k = 0; k < len; k++)
+                    data.push(a[i + k]);
                 var next = ((a[i+(ss-3)] & 0x3) << 8) | (a[i+(ss-2)]);
                 sector = next-1;
             }
@@ -2242,6 +2350,8 @@ function load_data(name,a)
                         f.id = _id++;
                         f.ext = get_ext(f.file_name,f.data);
                         files.push(f);
+                    } else {
+                        console.log(f.file_name + " failed to read?");
                     }
     			}
     			i += 16;
@@ -2313,7 +2423,8 @@ function render_state(m)
 
 function render_file(f)
 {
-    var txt = _exts[f.ext] ? _exts[f.ext].is_txt : 0;
+    var txt = _exts[f.ext] ? _exts[f.ext].is_txt : false;
+    var img = _exts[f.ext] ? _exts[f.ext].is_img : false;
     _h("#tabs",
         `<div class='info'>
             ${finfo(f)}
@@ -2321,7 +2432,7 @@ function render_file(f)
             <button style="float:right;" onclick="save(0)">Download</button>
             ${txt ? `<div class='radio' onclick="radio_click('layout',event)" style="float:right">${radio_init('layout',['40','80','Wide'])}</div>` : ""}
         </div>
-        <div id="file">${txt ? `<div><canvas id="show"></canvas></div>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
+        <div id="file">${(txt || img) ? `<div><canvas id="show"></canvas></div>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
     );
 }
 
