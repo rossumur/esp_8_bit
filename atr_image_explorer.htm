@@ -216,6 +216,7 @@ function hex_line(addr,data,i,len)
 {
 	var s = [hex(addr,6) + " "];
 	var p = '';
+    var pad = 16-len;
 	while (len--) {
 		var j = data[i];
 		if (j >= 0x20 && j <= 0x7E)
@@ -224,6 +225,8 @@ function hex_line(addr,data,i,len)
 			p += '.'
 		s.push(hex(data[i++],2) + " ");
 	}
+    while (pad--)
+        p = "   " + p;
 	return s.join('') + " " + p;
 }
 
@@ -231,7 +234,7 @@ function hex_dump(a,i,len)
 {
 	var hex = [];
 	for (var j = 0; j < len; j += 16)
-		hex.push(hex_line(j,a,i+j,16));
+		hex.push(hex_line(j,a,i+j,Math.min(16,len-j)));
 	return hex.join("\n");
 }
 
@@ -239,17 +242,18 @@ function hex_dump(a,i,len)
 //===================================================================================================
 
 var _fcanvas;
-function draw(ctx,s,x,y)
+function draw(ctx,s,x,y,fcanvas)
 {
+    fcanvas = fcanvas || _fcanvas;
     for (var i = 0; i < s.length; i++) {
         var n = s.charCodeAt(i);
-        ctx.drawImage(_fcanvas,n*8,0,8,8,x*8,y*8,8,8);
+        ctx.drawImage(fcanvas,n*8,0,8,8,x*8,y*8,8,8);
         x++;
     }
 }
 
 // generate a canvas containing atari font
-function get_font()
+function get_font(src)
 {
     // map atascii to a line of font bits
     // https://www.atariarchives.org/mapping/appendix10.php
@@ -260,13 +264,15 @@ function get_font()
         if (c >= 32 && c < 96)
             c -= 32;
         else if (c < 32)
-            c += 32;
-        return _font[c*8 + y] ^ invert;
+            c += 64;
+        return src[c*8 + y] ^ invert;
     }
-    _fcanvas = document.createElement('canvas');
-    _fcanvas.width = 256*8;
-    _fcanvas.height = 8;
-    var ctx = _fcanvas.getContext('2d');
+
+    var canvas = document.createElement('canvas');
+    canvas.width = 256*8;
+    canvas.height = 8;
+    var ctx = canvas.getContext('2d');
+
     var pix = ctx.getImageData(0,0,256*8,8);
     var d = pix.data;
     var f = 0;
@@ -277,21 +283,22 @@ function get_font()
     		var b = font_bits(c,y);
     		for (var x = 0; x < 8; x++) {
     			if (b & 0x80) {
-      			d[i+0] = 128;
-      			d[i+1] = 162;
-      			d[i+2] = 255;
-      		} else {
-      			d[i+0] = 17;
-      			d[i+1] = 59;
-      			d[i+2] = 128;
-      		}
-      		d[i+3] = 0xFF;
-      		i += 4;
-      		b <<= 1;
+          			d[i+0] = 128;
+          			d[i+1] = 162;
+          			d[i+2] = 255;
+          		} else {
+          			d[i+0] = 17;
+          			d[i+1] = 59;
+          			d[i+2] = 128;
+          		}
+          		d[i+3] = 0xFF;
+          		i += 4;
+          		b <<= 1;
     		}
     	}
     }
     ctx.putImageData(pix,0,0);
+    return canvas;
 }
 
 // make an atari line of text to look like dir
@@ -342,9 +349,13 @@ function resize_parent(e,z)
     e.parentNode.style.height = e.height*z + "px";
 }
 
-function show_ataritext(f,lst)
+function show_ataritext(f,lst,font)
 {
     render_file(f);
+
+    var fcanvas;
+    if (font)
+        fcanvas = get_font(font);
 
     var layout = _radios["layout"].value;
     var cols = layout == 0 ? 40:80;
@@ -375,7 +386,7 @@ function show_ataritext(f,lst)
     ctx.fillStyle = "rgba(17,59,128,1)";
     ctx.fillRect(0, 0, c.width, c.height);
     for (var y = 0; y < wrap.length; y++)
-        draw(ctx,wrap[y],2,y+1);
+        draw(ctx,wrap[y],2,y+1,fcanvas);
     if (layout == 2)
         c.classList.remove("zoomed");
     else
@@ -1963,6 +1974,62 @@ function show_txt(f)
     show_ataritext(f,t);
 }
 
+// https://github.com/TheRobotFactory/EightBit-Atari-Fonts
+function show_fnt(f)
+{
+    function fnt(n,len) {
+        var space = (n & 0x80) ? String.fromCharCode(128+32) : ' ';
+        var s = space;
+        for (var i = 0; i < len; i++)
+            s += String.fromCharCode(n+i);
+        return s + space;
+    }
+    var inverted = '';
+    for (var i = 0; i < 34; i++)
+        inverted += String.fromCharCode(32+128);
+
+    var t = [];
+    t.push("");
+    t.push(fnt(32,32)); t.push("");
+    t.push(fnt(64,32)); t.push("");
+    t.push(fnt(0,32)); t.push("");
+    t.push(fnt(96,32)); t.push("");
+    t.push(inverted);
+    t.push(fnt(32+128,32)); t.push(inverted);
+    t.push(fnt(64+128,32)); t.push(inverted);
+    t.push(fnt(0+128,32)); t.push(inverted);
+    t.push(fnt(96+128,32)); t.push(inverted);
+    var s = [
+        "",
+        "YOU ARE IN A MAZE OF TWISTY",
+        "LITTLE PASSAGES, ALL ALIKE.",
+        "",
+        " - Crowther & Woods",
+        "",
+        "",
+        "Never argue with an idiot.",
+        "They will drag you down to their",
+        "level and beat you with",
+        "experience.",
+        "",
+        " - Mark Twain",
+        "",
+        "",
+        "Nobody ever figures out what",
+        "life is all about, and it doesn't",
+        "matter. Explore the world. Nearly",
+        "everything is really interesting",
+        "if you go into it deeply enough.",
+        "",
+        " - Richard P. Feynman",
+        "",
+    ];
+    s.forEach(line => t.push(' ' + line));
+    t.push("");
+
+    show_ataritext(f,t,f.data);
+}
+
 var _exts = {
     "bas": {name:"Atari Basic", is_txt:true },
     "lst": {name:"Atari Basic Listing", is_txt:true },
@@ -1970,6 +2037,8 @@ var _exts = {
     "lis": {name:"Listing", is_txt:true },
     "doc": {name:"Document", is_txt:true },
     "txt": {name:"Text File", is_txt:true },
+
+    "fnt": {name:"Font File", is_txt:true },
 
     "sys": {name:"System", is_code:true },
     "xex": {name:"Executable", is_code:true },
@@ -2075,6 +2144,11 @@ function show(id)
     _shown = f;
     if (f.ext == "bas") {
         show_bas(f);
+        return;
+    }
+
+    if (f.ext == "fnt") {
+        show_fnt(f);
         return;
     }
 
@@ -2188,7 +2262,7 @@ function load()
         render_state(_containers);
         show(_containers[_containers.length-1].files[0].id);    // select one
     });
-    get_font();
+    _fcanvas = get_font(_font);
 }
 
 function finfo(f)
@@ -2245,7 +2319,7 @@ function render_file(f)
             ${finfo(f)}
             ${txt ? `<button style="float:right;" onclick="save(1)">Save As LST</button>` : ""}
             <button style="float:right;" onclick="save(0)">Download</button>
-            <div class='radio' onclick="radio_click('layout',event)" style="float:right">${radio_init('layout',['40','80','Wide'])}</div>
+            ${txt ? `<div class='radio' onclick="radio_click('layout',event)" style="float:right">${radio_init('layout',['40','80','Wide'])}</div>` : ""}
         </div>
         <div id="file">${txt ? `<div><canvas id="show"></canvas></div>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
     );
