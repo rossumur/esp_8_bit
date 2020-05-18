@@ -8,7 +8,6 @@ body {
 	background-color:#F8F8F8;
 	font-family:"Open Sans","Helvetica Neue",Helvetica;
 	padding: 20px;
-
     display: flex;
     flex-direction: column;
 }
@@ -18,7 +17,8 @@ canvas {
     margin:0px;
 }
 .zoomed {
-    zoom:200%;
+    transform-origin: 0px 2px;
+    transform:scale(2);
 }
 nav {
     border: solid 1px #CCC;
@@ -31,7 +31,7 @@ ul {
     padding: 0px;
 }
 li {
-    max-height: 16px;
+    font-size: x-small;
 }
 li:hover {
     background-color: yellow;
@@ -52,6 +52,7 @@ canvas {
   image-rendering: -webkit-optimize-contrast; /* Safari                        */
   image-rendering: -o-crisp-edges;            /* OS X & Windows Opera (12.02+) */
   image-rendering: pixelated;                 /* Awesome future-browsers       */
+  image-rendering: crisp-edges;
   -ms-interpolation-mode: nearest-neighbor;   /* IE                            */
 }
 
@@ -105,13 +106,13 @@ td {
     cursor: pointer;
     font-size: small;
     height:18px;
-    margin-left: 20px;
-    margin-right: 20px;
+    margin-left: 16px;
+    margin-right: 16px;
 }
 .radio span {
     border: 1px solid #CCC;
-    padding-left: 20px;
-    padding-right: 20px;
+    padding-left: 16px;
+    padding-right: 16px;
 }
 .hilite {
     background: #CCF;
@@ -301,6 +302,7 @@ function draw_line(id,txt)
     c.height = 8;
     var ctx = c.getContext('2d');
     draw(ctx,txt,0,0);
+    resize_parent(c,2);
 }
 
 // Simple radio buttons
@@ -334,6 +336,12 @@ function radio_changed(name,v)
     }
 }
 
+function resize_parent(e,z)
+{
+    e.parentNode.style.width = e.width*z + "px";
+    e.parentNode.style.height = e.height*z + "px";
+}
+
 function show_ataritext(f,lst)
 {
     render_file(f);
@@ -363,15 +371,16 @@ function show_ataritext(f,lst)
     c.width = cols*8;
     c.height = wrap.length*8+16;
     var ctx = c.getContext('2d');
+    ctx.webkitImageSmoothingEnabled = false;
     ctx.fillStyle = "rgba(17,59,128,1)";
     ctx.fillRect(0, 0, c.width, c.height);
     for (var y = 0; y < wrap.length; y++)
         draw(ctx,wrap[y],2,y+1);
-
     if (layout == 2)
         c.classList.remove("zoomed");
     else
         c.classList.add("zoomed");
+    resize_parent(c,layout == 2 ? 1:2);
 }
 
 var _font = [
@@ -2202,7 +2211,7 @@ function render_state(m)
             <ul id="menu">
             ${container.files.map(file => 
                 `<li onclick="show(${file.id})">
-                    <canvas class='zoomed' id="canvas${file.id}"></canvas>
+                    <div><canvas class='zoomed' id="canvas${file.id}"></canvas></div>
                 </li>`
             ).join("")}
             </ul>
@@ -2238,7 +2247,7 @@ function render_file(f)
             <button style="float:right;" onclick="save(0)">Download</button>
             <div class='radio' onclick="radio_click('layout',event)" style="float:right">${radio_init('layout',['40','80','Wide'])}</div>
         </div>
-        <div id="file">${txt ? `<canvas id="show"></canvas>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
+        <div id="file">${txt ? `<div><canvas id="show"></canvas></div>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
     );
 }
 
