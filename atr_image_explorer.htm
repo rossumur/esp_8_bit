@@ -1247,7 +1247,8 @@ function ataribasic(a,i,len)
     function failed(reason)
     {
         reason = reason || "Bytes don't look like Basic";
-        return {listing:["*" + reason + "*"]};
+        console.log(reason);
+        return null;
     }
 
 	var origin = b.vnt - b.lomem - 14; // file offsets are weird?
@@ -2580,6 +2581,11 @@ function le16(a,i)
 	return a[i] | ((a[i+1]) << 8);
 }
 
+function le32(a,i)
+{
+    return a[i] | ((a[i+1]) << 8) | ((a[i+2]) << 16) | ((a[i+3]) << 24);
+}
+
 function toAscii(a,i,len)
 {
 	var s = '';
@@ -2723,6 +2729,7 @@ var _exts = {
     "exe": {name:"Load and Go Executable (exe)", is_code:true, header:true },
     "com": {name:"Load and Go Executable (com)", is_code:true, header:true },
     "rom": {name:"ROM Dump File", is_code:true },
+    "car": {name:"Cartridge File", is_code:true },
     "obj": {name:"Object Code", is_code:true },
 
     "dat": {name:"Raw Data"},
@@ -2801,6 +2808,14 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
     if (!header)
     {
         org = org || 0x700;
+        var sig = le32(a,i);
+        if (sig = 0x52544143) // 'CART'
+        {
+            org = 0x8000;
+            i += 16;        // Cart file
+            len -= 16;
+        }
+
         lines.push("; file " + name + " is " + len + " bytes");
         var asm = dis(org,a,i,len);  // disassemble all of it
         asm.forEach(line => lines.push(line));
@@ -3143,7 +3158,7 @@ function load_data(name,a)
     	}
         if (files.length)
             files.push({name83:"",name:name,ext:"",data:[],id:_id++});  // spacer
-        files.push({name83:"[ sectors ]",name:name,ext:"atr",data:a,id:_id++,atr:atr});
+        files.push({name83:sector_count + " sectors",name:name,ext:"atr",data:a,id:_id++,atr:atr});
         _containers.unshift({name:name,length:a.length,data:a,ext:"atr",files:files,id:_container_id++});
     }
 }
@@ -3216,11 +3231,7 @@ function render_state(m)
             s = '   ';
         }
         var n = f.name83;
-        while (n.length < 11)
-            n += ' ';
-        if (n.length > 11)
-            n = n.substr(0,11) + '-';   // truncate
-        else
+        while (n.length < 12)
             n += ' ';
         var locked = f.flags & 0x20 ? "*" : " ";
         return "  " + locked + " " + n + s + "  ";
