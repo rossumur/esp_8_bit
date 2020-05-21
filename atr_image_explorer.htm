@@ -1244,9 +1244,15 @@ function ataribasic(a,i,len)
 		statements:[]
 	}
 
+    function failed(reason)
+    {
+        reason = reason || "Bytes don't look like Basic";
+        return {listing:["*" + reason + "*"]};
+    }
+
 	var origin = b.vnt - b.lomem - 14; // file offsets are weird?
     if (origin < 0)
-        return null;
+        return failed();
 	b.vnt -= origin;
 	b.vnte -= origin;
 	b.vvt -= origin;
@@ -1254,7 +1260,7 @@ function ataribasic(a,i,len)
 	b.stmcur -= origin;
 	b.starp -= origin;
     if (b.vnt > b.vnte || b.vnte > b.vvt || b.vvt > b.stmtab || b.stmtab > b.stmcur || b.stmcur > b.starp)
-        return null;    // Not a basic file?
+        return failed();    // Not a basic file?
 
 	function get_string(data,si,len) {
 		var s = '';
@@ -1290,16 +1296,28 @@ function ataribasic(a,i,len)
 	var vnt_begin = i + b.vnt;
 	var vnt_end = i + b.vnte;
 	var n = '';
+    var last_name;
+    var diff_names = 0;
 	for (var j = vnt_begin; j < vnt_end; j++) {
 		n += String.fromCharCode(a[j]&0x7F);
 		if (a[j] & 0x80)
 		{
 			if (n.length && n[n.length-1] == '(')
 				n = n.substr(0,n.length-1);	// 
+
+            if (last_name) {    // check for scrubbed name table
+                if (n != last_name)
+                    diff_names++;
+            }
+            last_name = n;
+
 			b.variable_names.push(n);
 			n = '';
 		}
 	}
+
+    if (diff_names == 0)
+        b.variable_names = [];  // name table was set to the same value: reset it
 
 	var vvt_begin = i + b.vvt;	// NOT SURE WHY THESE ARE +1
 	var tokens_begin = i + b.stmtab;
@@ -1366,7 +1384,7 @@ function ataribasic(a,i,len)
 			var cmd = a[j+k+1];
 			k += 2;
             if (cmd >= 56)
-                return null;    // not basic
+                return failed("Unrecognized command index:" + cmd);    // not basic
 
 			s.tok.push(_basic_commands[cmd]);
 			if (cmd != 0x36)	// slient LET
@@ -1415,7 +1433,7 @@ function ataribasic(a,i,len)
 							txt = b.variable_names[op&0x7F];
                         else {
                             if (op >= 85)
-                                return null;    // not basic
+                                return failed("Unrecognized operation:" + op);    // not basic
 							txt = _basic_operators[op];
                             if (cmd == 30 && (txt == "GOTO" || txt == "GOSUB"))   // on/goto/gosub
                                 txt = " " + txt + " ";
@@ -3073,6 +3091,8 @@ function load_data(name,a)
                 for (var k = 0; k < len; k++)
                     data.push(a[i + k]);
                 var next = ((a[i+(ss-3)] & 0x3) << 8) | (a[i+(ss-2)]);
+                if (next == 0)
+                    break;  // EOF?
                 sector = next-1;
             }
             return new Uint8Array(data);
@@ -3103,7 +3123,10 @@ function load_data(name,a)
                 f.valid = (f.total < sector_count) && (f.start < sector_count);
                 //if (f.flags & 0x40) {
                 if (f.valid) {
-                    f.name = toAscii(a,i+5,8).trim() + "." + toAscii(a,i+13,3).trim();
+                    var aext = toAscii(a,i+13,3).trim();
+                    f.name = toAscii(a,i+5,8).trim();
+                    if (aext.length)
+                        f.name += "." + aext;
                     f.name83 = toAscii(a,i+5,11).trim();
                     f.number = -1;
                     f.data = file_read(f);
