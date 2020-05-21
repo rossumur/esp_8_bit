@@ -15,15 +15,9 @@ canvas {
     border:none;
     padding: 0px;
     margin:0px;
-}
-.zoomed {
     transform-origin: 0px 2px;
-    transform:scale(2);
 }
-.zoomed2 {
-    transform-origin: 0px 2px;
-    transform:scale(4,2);
-}
+
 nav {
     border: solid 1px #CCC;
     background: #CCF;
@@ -120,6 +114,19 @@ td {
 }
 .hilite {
     background: #CCF;
+}
+.exts {
+    font-weight: 300;
+    padding: 4px;
+    margin: 4px;
+    font-size: small;
+    width:336px;
+}
+.exts b {
+    display: inline-block;
+    margin-right: 16px;
+    width : 100px;
+    text-align:right;
 }
 </style>
 
@@ -339,54 +346,572 @@ var atari_palette_rgb = [
     0x00110E00,0x001D1A00,0x00292500,0x00353100,0x00413D00,0x004F4B00,0x005D5A00,0x006B6800,
     0x0076720B,0x0085821B,0x0097932D,0x00A8A43E,0x00B9B650,0x00CCC963,0x00E0DD77,0x00F7F48F,
 ];
-// render mic graphics
-function render_mic(canvas,mid)
+
+// atari index color to canvas
+// may stretch horizontally to maintain aspect ratio
+function atari2canvas(canvas,atari,width,height,aspect,brightness)
 {
-    var has_palette = false;
-    var height = 192;
-    switch (mid.length) {
-        case 7684:
-            has_palette = true;
-            break;
-        case 9604:
-            has_palette = true;
-        case 9600:
-            height = 240;
-            break;    
-    }
-
-    canvas.width = 160;
+    brightness = brightness || 1;
+    canvas.width = width*aspect;
     canvas.height = height;
-    var palette = new Uint32Array(4);
-    if (has_palette) {
-        for (var p = 0; p < 4; p++)
-            palette[p] = atari_palette_rgb[mid[mid.length-4+p]];
-    } else {
-        for (var p = 0; p < 4; p++)
-            palette[p] = atari_palette_rgb[p*5];
-    }
-
     var ctx = canvas.getContext('2d');
-    var pix = ctx.getImageData(0,0,160,height);
+    var pix = ctx.getImageData(0,0,width*aspect,height);
     var d = pix.data;
     var src = 0;
     var i = 0;
+   
     for (var y = 0; y < height; y++) {
-        for (var x = 0; x < 160; x += 4) {
-            var b = mid[src++];
-            for (var j = 0; j < 4; j++) {
-                var c = palette[(b >> 6) & 0x3];
-                b <<= 2;
-                d[i+0] = (c >> 16) & 0xFF;
-                d[i+1] = (c >> 8) & 0xFF;
-                d[i+2] = c & 0xFF;
+        for (var x = 0; x < width; x++) {
+            var c = atari[src++];
+            for (var j = 0; j < aspect; j++) {
+                d[i+0] = ((c >> 16) & 0xFF)*brightness;
+                d[i+1] = ((c >> 8) & 0xFF)*brightness;
+                d[i+2] = (c & 0xFF)*brightness;
                 d[i+3] = 0xFF;
                 i += 4;
             }
         }
     }
     ctx.putImageData(pix,0,0);
-    return canvas;
+}
+
+// convert a koala into a mic
+function koala(src)
+{
+    var dst = new Uint8Array(7684);
+    var dst_len = 7680;
+    var i = src[4] + 1;
+    var j = 0;
+    var end = src.length;
+    var type = src[7];
+
+    if (type == 0) {
+        while (i < end)
+            dst[j++] = src[i++];  // no compression
+    } else {
+        while (i < end)
+        {
+            var b = src[i++];
+            var len = b & 0x7F;
+            if (len == 0) {
+                len = src[i++] << 8;
+                len |= src[i++];
+            }
+            b = (b & 0x80) ? -1 : src[i++];
+
+            do {
+                dst[j] = b < 0 ? src[i++] : b;
+                if (j == (dst_len-1))
+                    break;
+                if (type == 2)
+                    j++;
+                else {
+                    j += 80;
+                    if (j >= dst_len)
+                        j -= (j < dst_len + 40) ? dst_len - 40 : dst_len + 39;
+                }
+            } while (--len > 0);
+        }
+    }
+
+    dst[7680] = src[17];
+    dst[7681] = src[13];
+    dst[7682] = src[14];
+    dst[7683] = src[15];
+    return dst;
+}
+
+// unpack from Piotr Fusik and Adrian Matoga
+
+function unpack_rip(data,data_len,unpacked_data,unpacked_len)
+{
+    function create_fano_tree(src,offset,n,tree)
+    {
+        var i;
+        var pos = 0;
+        var positions = new Int32Array(16);
+        for (i = 0; i < 16; i++)
+            tree.count[i] = 0;
+        for (i = 0; i < n; i++) {
+            var bits = src[(i >> 1) + offset];
+            bits = (i & 1) == 0 ? bits >> 4 : bits & 0xf;
+            tree.count[bits]++;
+        }
+        for (i = 0; i < 16; i++) {
+            positions[i] = pos;
+            pos += tree.count[i];
+        }
+        for (i = 0; i < n; i++) {
+            var bits = src[(i >> 1) + offset];
+            bits = (i & 1) == 0 ? bits >> 4 : bits & 0xf;
+            tree.values[positions[bits]++] = i & 0xFF;
+        }
+    }
+
+    function get_bit(s)
+    {
+        var bits = s.bits;
+        if (bits == 0x80) {
+            if (s.offset >= s.length)
+                return -1;
+            bits = s.bytes[s.offset++] * 2 + 1;
+        }
+        else
+            bits <<= 1;
+        s.bits = bits & 0xFF;
+        return bits >> 8;
+    }
+
+    function get_code(s,tree)
+    {
+        var p = tree.count[0];
+        var i = 0;
+        var bits;
+        for (bits = 1; bits < 16; bits++) {
+            var n = tree.count[bits];
+            var bit = get_bit(s);
+            if (bit == -1)
+                return -1;
+            i = i * 2 + bit;
+            if (i < n)
+                return tree.values[p + i];
+            p += n;
+            i -= n;
+        }
+        return -1;
+    }
+
+    var length_tree = {count:new Int32Array(16),values:new Uint8Array(256)};
+    var distance_tree= {count:new Int32Array(16),values:new Uint8Array(256)};
+    var literal_tree= {count:new Int32Array(16),values:new Uint8Array(256)};
+    var stream = { bits:0x80, bytes:data, length:data_len, offset:16 + 288 };
+    var unpacked_offset;
+
+    /* "PCK" header (16 bytes) */
+    if (data_len < 304 || data[0] != 80 || data[1] != 67 || data[2] != 75)  // PCK
+        return 0;
+
+    /* 288 bytes Shannon-Fano bit lengths */
+    create_fano_tree(data,16, 64, length_tree);
+    create_fano_tree(data,16 + 32, 256, distance_tree);
+    create_fano_tree(data,16 + 32 + 128, 256, literal_tree);
+
+    /* LZ77 */
+    for (unpacked_offset = 0; unpacked_offset < unpacked_len; ) {
+        switch (get_bit(stream)) {
+        case -1:
+            return 0;
+        case 0:
+            unpacked_data[unpacked_offset++] = get_code(stream,literal_tree);
+            break;
+        case 1:
+            {
+                var distance = get_code(stream, distance_tree) + 2;
+                var len;
+                if (distance > unpacked_offset)
+                    return 0;
+                len = get_code(stream, length_tree) + 2;
+                do {
+                    unpacked_data[unpacked_offset] = unpacked_data[unpacked_offset - distance];
+                    unpacked_offset++;
+                } while (--len > 0);
+                break;
+            }
+        }
+    }
+    return 1;
+}
+
+function rip(d)
+{
+    var mode = d[7];
+    var hdr_len = d[11] + (d[12] << 8);
+    var height = d[15];
+    var txt_len = d[17];
+    var pal_len = d[20 + txt_len];
+    var dst;
+
+    if (d[9] == 0) {
+        dst = d.slice(hdr_len,d.length);
+    } else if (d[9] == 1) {
+        var n = d[13];
+        if (mode == 0x30)
+            n += 4;  // 8 byte palette every 2nd line at end of image(s)
+        n *= height;
+        dst = new Uint8Array(n);
+        var src = d.slice(hdr_len,d.length);
+        if (!unpack_rip(src,src.length,dst,n))
+            console.log("bad unpack_rip?");
+    } else
+        return null;
+
+    // Copy palette
+    var pal = new Uint8Array(pal_len);
+    for (var i = 0; i < pal_len; i++)
+        pal[i] = d[24 + txt_len + i];
+
+    // separate mutlirip palette
+    var multihip_pal = null;
+    if (mode == 0x30) {
+        var n = d[13]*height;
+        multihip_pal = dst.slice(n,dst.length);
+        dst = dst.slice(0,n);
+    }
+    // have the unpacked frame
+    return {
+        pal:pal,
+        multihip_pal:multihip_pal,
+        data:dst,
+        ext:"rip_hip",
+        mode:mode
+    }
+}
+
+function render_image(canvas,f)
+{
+    var pal0 = [0,5,10,15,0,0,0,0,0];
+    var pal1 = [0,5,10,15,0,0,0,0,0];
+    var hip =  [0,0,2,4,6,8,10,12,14, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xE0];
+    var multihip_pal = null;
+
+    var data = f.data;
+    var ext = f.ext;
+    var height = 192;
+    var width = 160;
+    var offset = 40;
+    var offset2 = 40;
+    var gr = 7;
+    var src = 0;
+
+    // Turn PIC into MIC
+    if (ext == "pic") {
+        data = koala(data);
+        ext = "mic";
+    }
+
+    // Turn RIP into something
+    if (ext == "rip")
+    {
+        var r = rip(data);
+        data = r.data;
+        ext = r.ext;
+        hip = r.pal;
+
+        switch (r.mode) {
+            case 14: ext = "rip_mode_14"; break;
+            case 16: ext = "rip_mode_16"; break;
+            case 30:
+                ext = "inp";
+                for (var i = 0; i < 4; i++)
+                    pal0[i] = pal1[i] = hip[4 + ((i-1)&3)];
+                break;
+            case 48:
+                ext = "rip_multirip";
+                multihip_pal = r.multihip_pal;
+                break;
+        }
+    }
+
+    function set_pal(offset,len)
+    {
+        for (var i = 0; i < len; i++)
+            pal0[i] = pal1[i] = data[offset++];
+    }
+
+    function avg(p0,p1)
+    {
+        return ((atari_palette_rgb[p0] & 0x00FEFEFE) + (atari_palette_rgb[p1] & 0x00FEFEFE)) >> 1;
+    }
+
+    switch (data.length)
+    {
+        case 3844:
+        case 7684:
+        case 9604:
+        case 16004: // Interpainter
+            set_pal(data.length-4,4);
+            break;
+
+        case 7682:
+            set_pal(data.length-2,2);
+            break;
+
+        case 7689:
+            set_pal(data.length-9,9);
+            break;
+    }
+
+    switch (ext) {
+        case "mic":
+        case "gr7":
+            height = 96;
+            if (data.length >= 7680)
+                height = 192;
+            break;
+
+        case "gr8":
+            width = 320;
+            gr = 8;
+            if (data.length == 7680)
+                pal0[1] = pal1[1] = 0x0F;
+            break;
+
+        case "gr9":
+            width = 80;
+            gr = 9;
+            break;
+
+        case "g10":
+            width = 80;
+            gr = 10;
+            break;
+
+        case "ilc":
+        case "pzm":
+            width = 80;
+            offset = 40*192;
+            gr = 33;
+            break;
+
+        case "plm":
+        case "apc":
+            width = 80;
+            height = 96;
+            gr = 32;
+            break;
+
+        case "inp":
+            width = 160;
+            height = 200;
+            offset = height*40;
+            gr = 37;
+            break;
+
+        // switch between Graphics 11 and Graphics 15
+        // https://en.wikipedia-on-ipfs.org/wiki/Atari_8-bit_family_software-driven_graphics_modes.html
+        case "cin":
+            offset = 80*height/2;
+            gr = 34;
+            break;
+
+        case "raw":
+            src += 4;       // skip header 'XLPB'
+            for (var i = 0; i < 4; i++) {
+                pal0[i] = data[0x3C04 + ((i-1)&3)];
+                pal1[i] = data[0x3C08 + ((i-1)&3)];
+            }
+            height = 192;
+            gr = 37;
+            break;
+
+        case "ist":
+            height = 200;
+            src = 16;
+            gr = 35;
+            break;
+
+        case "hip":
+            // 10 and 9 greyscale
+            gr = 36;
+            var hdr = le16(data,0); // FFFF
+            if (hdr == 0xFFFF && data.length != 16009) {    // Has header: Frames have explicit length
+                var len0 = le16(data,4)-le16(data,2)+1;
+                var len1 = le16(data,4+len0+6)-le16(data,2+len0+6)+1;
+                src += 6;
+                offset = len0 + 6;
+                height = len0/40;
+            } else {
+                height = data.length/80 | 0;
+                src = height*40;
+                offset = -height*40;
+                var p = height*80;
+                if ((p + 9) == data.length) {   // has a palette?
+                    for (var i = 0; i < 9; i++)
+                        hip[i] = data[p++];
+                }
+            }
+            break;
+
+        case "tip":
+            width = data[5];
+            height = data[6];
+            var frame_len = data[7] | (data[8] << 8);
+            // 3 frames: gr9 luma, gr10 luma, gr11 chroma
+            src += 9;                   // gr9 luma
+            offset = frame_len;         // gr10 luma
+            offset2 = frame_len*2;      // chroma
+            gr = 38;
+            break;
+
+        case "rip_hip":
+        case "rip_multirip":
+            gr = 36;
+            height = data.length/80;
+            offset = height*40;
+            break;
+
+        case "rip_mode_14":
+            gr = 7;
+            height = 192;
+            for (var i = 0; i < 4; i++)
+                pal0[i] = pal1[i] = hip[4+(i == 0 ? 4:i-1)] & 0xFE;
+            break;
+
+        case "rip_mode_16":
+            for (var i = 0; i < 4; i++) {
+                pal0[i] = hip[4 + i]; // TODO: why are they all dark?
+                pal1[i] = hip[0 + i] & 0xFE;
+            }
+            height = data.length/80;
+            offset = data.length/2;
+            gr = 37;    //
+            break;
+    }
+
+    var buf = new Uint32Array(width*height);
+    var dst = 0;
+    var lastp = 0;
+    var ap = atari_palette_rgb;
+    for (var y = 0; y < height; y++) {
+        var pal = (y & 1) ? pal1 : pal0;
+
+        if (gr == 35) { // ist palette
+            pal[0] = data[0x4000 + y];
+            pal[1] = data[0x40C8 + y];
+            pal[2] = data[0x4190 + y];
+            pal[3] = data[0x4258 + y];
+        }
+
+        if (multihip_pal)
+        {
+            for (var i = 0; i < 16; i++) {
+                var gr10_to_reg = [0,1,2,3,4,5,6,7,8,8,8,8,4,5,6,7];
+                hip[i] = i == 0 ? 0 : multihip_pal[gr10_to_reg[i] + ((y>>1)<<3) - 1] & 0xFE;
+            }
+        }
+
+        for (var x = 0; x < width;) {
+            var b = data[src];
+            switch (gr) {
+                case 7:
+                case 35:
+                    for (var j = 0; j < 4; j++) {
+                        var bb = (b >> 6) & 3;
+                        buf[dst++] = ap[pal[bb]];
+                        b <<= 2;
+                    }
+                    x += 4;
+                    break;
+
+                case 8:
+                    for (var j = 0; j < 8; j++) {
+                        var bb = (b >> 7) & 1;
+                        buf[dst++] = ap[pal[bb]];
+                        b <<= 1;
+                    }
+                    x += 8;
+                    break;
+
+                case 9:
+                    buf[dst++] = ap[b >> 4];        // 9=16 greys,10=index,11=chroma
+                    buf[dst++] = ap[b & 0x0F];
+                    x += 2;
+                    break;
+
+                case 10:
+                    buf[dst++] = ap[pal[b >> 4]];
+                    buf[dst++] = ap[pal[b & 0x0F]];
+                    x += 2;
+                    break;
+
+                case 32:
+                    var luma = data[src+offset];
+                    buf[dst++] = ap[((luma >> 4) & 0x0F) | (b & 0xF0)];
+                    buf[dst++] = ap[(luma & 0xF) | ((b & 0xF) << 4)];
+                    x += 2;
+                    break;
+
+                case 33:
+                    var hue = data[src+offset];
+                    buf[dst++] = ap[((b >> 4) & 0x0F) | (hue & 0xF0)];
+                    buf[dst++] = ap[(b & 0xF) | ((hue & 0xF) << 4)];
+                    x += 2;
+                    break;
+
+                case 34: // Champions
+                    var hue = data[src+offset];
+                    buf[dst++] = ap[pal[b >> 6] | (hue & 0xF0)];
+                    buf[dst++] = ap[pal[(b >> 4) & 3] | (hue & 0xF0)];
+                    buf[dst++] = ap[pal[(b >> 2) & 3] | ((hue & 0xF) << 4)];
+                    buf[dst++] = ap[pal[b & 3] | ((hue & 0xF) << 4)];
+                    x += 4;
+                    break;
+
+                case 36:  // hip
+                    //  00001111
+                    //  LL222233
+                    var p2 = hip[b >> 4];         // gr10
+                    var p3 = hip[b & 0xF];
+                    b = data[src+offset];
+                    var p0 = b >> 4;                // gr9
+                    var p1 = b & 0xF;
+
+                    buf[dst++] = avg(p0,lastp);
+                    buf[dst++] = avg(p0,p2);
+                    buf[dst++] = avg(p1,p2);
+                    buf[dst++] = avg(p1,p3);
+                    lastp = p3;
+                    x += 4;
+                    break;// hip
+
+                case 37: // rip_mode_16/inp
+                    var b2 = data[src+offset];
+                    var pal_0 = (y & 1) ? pal1 : pal0;
+                    var pal_1 = (y & 1) ? pal0 : pal1;
+                    for (var j = 0; j < 4; j++) {
+                        var p0 = pal_1[(b2 >> 6) & 3];
+                        var p1 = pal_0[(b >> 6) & 3];
+                        buf[dst++] = avg(p0,p1);
+                        b <<= 2;
+                        b2 <<= 2;
+                    }
+                    x += 4;
+                    break;
+
+                case 38: // tip!
+                    var luma = data[src];
+                    var luma10 = data[src+offset];
+                    var chroma = data[src+offset2];          // chroma
+
+                    var l0 = ((luma >> 4) + lastp) >> 1;
+                    var l1 = ((luma >> 4) + hip[luma10 >> 4]) >> 1;
+                    var l2 = ((luma & 0xF) + hip[luma10 >> 4]) >> 1;
+                    lastp = hip[luma10 & 0xF];
+                    var l3 = ((luma & 0xF) + lastp) >> 1;
+
+                    var c0 = chroma & 0xF0;
+                    var c1 = (chroma << 4) & 0xF0;
+
+                    buf[dst++] = ap[c0|l0];
+                    buf[dst++] = ap[c0|l1];
+                    buf[dst++] = ap[c1|l2];        // 9=16 greys,10=index,11=chroma
+                    buf[dst++] = ap[c1|l3];
+                    x += 4;
+                    break;            
+            }
+            src++;
+        }
+        if (gr == 32 && offset == 40)
+            src += 40;
+    }
+
+    var brightness = 1;
+    switch (ext) {
+        case "rip_mode_16": brightness = 3; break;    // rip_mode_16,raw is dark, boost it please
+        case "raw": brightness = 2; break;
+    }
+    atari2canvas(canvas,buf,width,height,320/width,brightness);
+    return [320/canvas.width*2,192/canvas.height*2];
 }
 
 // make an atari line of text to look like dir
@@ -434,6 +959,7 @@ function radio_changed(name,v)
 function resize_parent(e,sx,sy)
 {
     sy = sy || sx;
+    e.style.transform = `scale(${sx},${sy})`;
     e.parentNode.style.width = e.width*sx + "px";
     e.parentNode.style.height = e.height*sy + "px";
 }
@@ -476,10 +1002,6 @@ function show_ataritext(f,lst,font)
     ctx.fillRect(0, 0, c.width, c.height);
     for (var y = 0; y < wrap.length; y++)
         draw(ctx,wrap[y],2,y+1,fcanvas);
-    if (layout == 2)
-        c.classList.remove("zoomed");
-    else
-        c.classList.add("zoomed");
     resize_parent(c,layout == 2 ? 1:2);
 }
 
@@ -627,7 +1149,7 @@ function makefont()
 //===================================================================================================
 //  Drag and drop
 
-function drop_init(el,onfile)
+function drop_init(el,onfile,all_done)
 {
     function over(b)
     {
@@ -638,20 +1160,35 @@ function drop_init(el,onfile)
             c.remove("over");
     }
 
+    function handleFiles(files)
+    {
+        function readAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const fr = new FileReader();
+                fr.onerror = reject;
+                fr.onload = function(evt) {
+                    onfile(file,evt.target.result);
+                    resolve(fr.result);
+                }
+                fr.readAsArrayBuffer(file);
+            });
+        }
+
+        // Load all the files, callback when done
+        Promise.all(Array.prototype.map.call(files,readAsArrayBuffer))
+        .then(urls => {
+            all_done();
+        })
+        .catch(error => {
+            console.log(error);
+        });
+    }
+
     function handleFileSelect(evt) {
         evt.stopPropagation();
         evt.preventDefault();
         over(0);
-
-        var files = evt.dataTransfer.files; // FileList object.
-        for (var i = 0, f; f = files[i]; i++) {
-            var reader = new FileReader();
-            reader.f = f;
-            reader.onload = (function(theFile) {
-                onfile(theFile.target.f,theFile.target.result);
-            });
-            reader.readAsArrayBuffer(f);
-        }
+        handleFiles(evt.dataTransfer.files);
     }
 
     function handleDragOver(evt) {
@@ -663,6 +1200,8 @@ function drop_init(el,onfile)
     el.addEventListener('drop', handleFileSelect, false);
     el.addEventListener('dragenter', e => over(1), false);
     el.addEventListener('dragleave', e => over(0), false);
+
+    _q("#fe").addEventListener("change", e => handleFiles(_q("#fe").files), false);
 }
 
 //===================================================================================================
@@ -1992,7 +2531,7 @@ function dis(addr,data,i,len)
         str.push("");
     }
 
-    var str = ["; Disassembly of " + hex(addr,4) + " to " + hex(addr+len-1,4)];
+    var str = ["; Disassembly of " + hex(addr,4) + " to " + hex(addr+len-1,4),""];
     var data = null;
     asm.forEach(a => {
         if (a.valid != -1) {
@@ -2009,6 +2548,7 @@ function dis(addr,data,i,len)
     });
     if (data)
         flush(data.pc,asm[asm.length-1].pc);
+    str.push("");
     return str;
 }
 
@@ -2063,14 +2603,13 @@ function show_txt(f)
     show_ataritext(f,t);
 }
 
-// 160*192 2 bit + 4 byte csum
-function show_mic(f)
+// 160*192 2 bit + [4 byte palette]
+function show_img(f)
 {
     render_file(f);
     var c = _q("#show");
-    render_mic(c,f.data);
-    c.classList.add("zoomed2");
-    resize_parent(c,4,2);
+    var aspect = render_image(c,f);
+    resize_parent(c,aspect[0],aspect[1]);
 }
 
 // https://github.com/TheRobotFactory/EightBit-Atari-Fonts
@@ -2130,25 +2669,48 @@ function show_fnt(f)
 }
 
 var _exts = {
+    "atr": {name:"ATR Disk Image"},
     "bas": {name:"Atari Basic", is_txt:true },
     "lst": {name:"Atari Basic Listing", is_txt:true },
     "asm": {name:"Assembly Listing", is_txt:true },
+    "m65": {name:"MAC/65 Assembly Listing", is_txt:true },
     "lis": {name:"Listing", is_txt:true },
     "doc": {name:"Document", is_txt:true },
+    "ata": {name:"ATASCII Text File", is_txt:true },
     "txt": {name:"Text File", is_txt:true },
 
-    "fnt": {name:"Font File", is_txt:true },
-    "set": {name:"Font File", is_txt:true },
+    "fnt": {name:"Font File", is_txt:true, font_set:true },
+    //"set": {name:"Font File", is_txt:true font_set:true },
 
     "mic": {name:"Micropainter Image", is_img:true },
+    "gr7": {name:"Graphics 7 Image", is_img:true },
+    "gr8": {name:"Graphics 8 Image", is_img:true },
+    "gr9": {name:"Graphics 9 Image", is_img:true },
+    "g10": {name:"Graphics 10 Image", is_img:true },
+    "apc": {name:"APAC 256 Color Image", is_img:true },
+    "plm": {name:"Plasma 256 Color Image", is_img:true },
+    "pzm": {name:"Pryzm Artist Image", is_img:true },
+    "ilc": {name:"Digi Paint Image", is_img:true },
+    "inp": {name:"InterPainter Image", is_img:true },
+    "cin": {name:"Champions' Interlace", is_img:true },
+    "pic": {name:"Koala MicroIllustrator", is_img:true },
+    "raw": {name:"XL-Paint MAX Image", is_img:true },
+    "ist": {name:"Interlace Studio Image", is_img:true },
+    "rip": {name:"Rocky Interlace Picture", is_img:true },
+    "hip": {name:"Hard Interlace Picture", is_img:true },
+    "tip": {name:"Taquart Interlace Picture", is_img:true },
 
     "sys": {name:"System", is_code:true },
-    "xex": {name:"Executable", is_code:true },
-    "com": {name:"Executable", is_code:true },
+    "xex": {name:"Load and Go Executable", is_code:true, header:true },
+    "exe": {name:"Load and Go Executable (exe)", is_code:true, header:true },
+    "com": {name:"Load and Go Executable (com)", is_code:true, header:true },
+    "rom": {name:"ROM Dump File", is_code:true },
+    "obj": {name:"Object Code", is_code:true },
 
-    "atr": {name:"ATR Disk Image"},
+    "dat": {name:"Raw Data"},
 };
 
+// guss the file type
 function get_ext(name,a)
 {
     var i = name.lastIndexOf(".");
@@ -2157,11 +2719,19 @@ function get_ext(name,a)
         if (_exts[ext])
             return ext;
     }
+
     var sig = le16(a,0);
     if (sig == 0x296)
         return "atr";
+
     if (sig == 0xFFFF)
         return "xex";
+
+    if (sig == 0x80FF && le16(a,2) == 0xC7C9)
+        return "pic";
+
+    if (sig == 0x4952)
+        return "rip";
 
     if (ataribasic(a,0,a.length))
         return "bas";
@@ -2192,25 +2762,37 @@ function save(as_lst)
     if (as_lst && f.ext == "bas")
     {
         var b = ataribasic(f.data,0,f.data.length);
-        var n = f.file_name;
+        var n = f.name;
         if (n.substr(n.length-4).toLowerCase() == ".bas")
             n = n.substr(0,n.length-4);     // trim ".BAS"
         save_bytes(n+".LST",b.lst);
     } else
-        save_bytes(f.file_name,f.data);
+        save_bytes(f.name,f.data);
 }
 
-function xex_dump(name,a,i,len)
+function xex_dump(name,a,i,len,expect_header,org,entry)
 {
+    if (name == "DOS.SYS")
+        org = 0x07CB;   // http://data.atariwiki.org/DOC/Inside_Atari_DOS_GBXL.pdf
+    var entry_points = [];
+    if (entry)
+        entry_points.push(entry);
+
+    var header = le16(a,i) == 0xFFFF;   // 
     var lines = [];
-    if (le16(a,i) != 0xFFFF)
+    if (!header)
     {
+        org = org || 0x700;
         lines.push("; file " + name + " is " + len + " bytes");
-        var asm = dis(0x600,a,i,len);  // disassemble all of it
+        var asm = dis(org,a,i,len);  // disassemble all of it
         asm.forEach(line => lines.push(line));
     } else {
-        lines.push("; xex file " + name + " is " + len + " bytes");
+        lines.push("; file " + name + " is " + len + " bytes");
+        var segs = [];
         var e = len+i;
+        var s;
+
+        // walk segments, collect entry points
         while (i < e) {
             var start = 0xFFFF;
             var end = 0xFFFF;
@@ -2220,37 +2802,175 @@ function xex_dump(name,a,i,len)
                 i += 2;
             }
             end = le16(a,i);
+            var slen = end+1 - start;
             i += 2;
-
-            var s = '';
-            var slen = end+1-start;
-            if (i + slen > e) {
+            if ((slen < 0) || (i + slen > e)) {
                 lines.push("; invalid xex segment ");
                 break;
             }
+            s = "; code segment " + slen + " bytes at " + hex(start,4) + ":" +  hex(end,4);
 
-            s = slen + " bytes at " + hex(start,4) + ":" +  hex(end,4);
-            lines.push("; xex segment " + s);
+            var seg = {start:start,end:end,offset:i};
+            if ((slen == 2) && (start == 0x2E0 || start == 0x2E2)) {
+                seg.addr = le16(a,i);
+                entry_points.push(seg.addr);
+                s += " -> " + (start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
+            }
+            lines.push(s);
+            segs.push(seg);
+            i += slen;
+        }
+        lines.push("");
 
-            if (slen == 2 && (start == 0x2E0 || start == 0x2E2)) {
-                s = (start == 0x2E0 ? "run":"ini") + ":" + hex(addr,4);
-                addr = le16(a,i);
-                lines.push("; " + (start == 0x2E0 ? "run":"initialize") + " at " + hex(addr,4));
-                lines.push("");
-            } else {
-                var asm = dis(start,a,i,slen);  // disassemble segment
+        // Do the disassembly
+        segs.forEach(seg => {
+            lines.push("; ===================================================");
+            var slen = seg.end+1 - seg.start;
+            s = "; code segment " + slen + " bytes at " + hex(start,4) + ":" +  hex(end,4);
+            if (seg.addr)
+                s += " -> " + (start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
+            lines.push(s);
+            lines.push('');
+            if (!seg.addr) {
+                var asm = dis(seg.start,a,seg.offset,slen);  // disassemble segment
                 asm.forEach(line => lines.push(line));
             }
-            i += end+1 - start;
-        }
+        });
     }
     return lines.join("\n");
+}
+
+// dump atr raw data
+function show_atr(f)
+{
+    var atr = f.atr;
+    var txt = [];
+    var d = atr.data;
+
+    function pad_hex(n)
+    {
+        return n > 0xFF ? hex(n,4) : '  ' + hex(n);
+    }
+
+    var _br = {
+        BFLG:   d[16],          // Boot flag; always equals 0.
+        BRCNT:  d[17],          // Number of sectors in the disk boot;
+        BLDADDR:le16(d,18),     // Boot load address; where DOS is loaded into memory;  $700
+        BINTAD: le16(d,20),     // DOS initialization address;  $1540. 
+        BCONT:  le16(d,23),     // skip 4C jmp
+        SABYTE: d[25],          // Maximum number of concurrently open files--usually three.
+        DRVBYT: d[26],          // Drive allocation byte; one bit per drive.
+        SAFBFW: d[27],
+        SASA:   le16(d,28),     // Buffer allocation address for drives and files.
+        DFSFLG: d[30],          // Reads zero if there is no DOS.SYS on disk, nonzero if present
+        DFLINK: le16(d,31),     // Points to first sector of the DOS.SYS file.
+        BLDISP: d[33],          // Number of displacement bytes to sector link bytes (last three) = 125
+        DFLADDR: le16(d,34),    // Address of the FMS (D:) handler table; $7CB
+        // $714 boot continues here...
+    };
+
+    function sector_offset(n)
+    {
+        return (n < 3) ? 16+n*0x80 : 16+3*0x80 + (n-3)*atr.sector_size;
+    }
+
+
+    function available(n)
+    {
+        return d[vtoc + 10 + (n >> 3)] & (0x80 >> (n & 3));
+    }
+
+    /*
+10 to 99    Bitmap for sectors 0 to 719. A bit value of 0 means in use, a value of 1 means the sector is free. Sector 0 doesn't exist. Sectors 1 to 3 are reserved for booting the disk, sector 360 is the VTOC, and sectors 361 to 368 are the directory sectors. Sector 720 is unused because sector 0 is used in the map, with 90 bytes there is only enough bits to map sectors 0 through 719. The number of available sectors can be calcualted 721-1-3-1-8-1=707 bytes. (721 bits are used since we started counting at 0.)
+100-127 Unused. These should all be set to 0 so the sectors are marked as used and therefore unavailable. Note: Mydos uses the first bit of byte 100 to allow sector 720 to used for a total of 708 free sectors.
+    */
+
+    // Check validity of TOC
+    var sc = (atr.size - 3*128)/atr.sector_size + 3;
+    var vtoc = sector_offset(360-1);
+    var valid = d[vtoc] == 2;
+    var total = le16(d,vtoc+1);
+    var unused = le16(d,vtoc+3);
+    var density;
+
+    if (total > sc || total == 0 || unused > sc)
+        valid = false;
+
+    var vtoc2 = 0;
+    if (sc <= 720) {
+        density = atr.sector_size == 128 ? "Single Density" : "Double Density";
+        for (var i = 101; i < 128; i++)
+            valid = valid && d[vtoc+i] == 0;
+    } else {
+        density = "1050 Double (Enhanced) Density";
+        vtoc2 = sector_offset(1024-1);
+        if (valid)
+            unused += le16(d,vtoc2+122);
+    }
+
+    txt.push(`; Image has ${sc} ${atr.sector_size} byte sectors - ` + density);
+    txt.push(valid ? `; ${unused} sectors free of ${total} total available` : `; VTOC is invalid`);
+    txt.push("; Jump to <a id='BOOT' href='#VTOC'>VTOC</a>");
+    if (vtoc2)
+        txt.push("; Jump to <a id='BOOT' href='#VTOC2'>VTOC2</a>");
+    txt.push("; Jump to <a href='#DIR'>Directory</a>");
+    txt.push("");
+
+    // Show boot sectors
+    txt.push("; boot record");
+    var k = Object.keys(_br);
+    for (var i = 0; i < k.length; i++)
+        txt.push("; " + pad_hex(_br[k[i]]) + " " + k[i]);
+    txt.push("");
+    var size = sector_offset(_br.BRCNT);    // 0 based
+    var boot = d.slice(16,size);
+    txt.push(xex_dump("boot",boot,0,boot.length,0,_br.BLDADDR,_br.BCONT));
+
+    var n = 0;
+    for (;;)
+    {
+        var size = n < 3 ? 128 : atr.sector_size;
+        var offset = sector_offset(n);
+        if (offset >= (atr.size+16))
+            break;
+        var zero = 1;
+        for (var i = 0; i < size; i++) {
+            if (d[i+offset]) {
+                zero = 0;
+                break;
+            }
+        }
+        switch (++n) {
+            case 360: txt.push("; <span id='VTOC'>Volume Table of Contents <a href='#BOOT'>(back)</a></span>"); break;
+            case 361: txt.push("; <span id='DIR'>Directory <a href='#BOOT'>(back)</a></span>"); break;
+            case 1024: txt.push("; <span id='VTOC2'>Volume Table of Contents 2<a href='#BOOT'>(back)</a></span>"); break;
+        }
+        txt.push("; Sector " + n + (zero ? " (" + size + " zeros)":""));
+        if (!zero)
+            txt.push(hex_dump(d,offset,size));
+        txt.push("");
+        if (n == _br.BRCNT) {
+            txt.push("; ===================================================");
+            txt.push("; End of boot sectors");
+            txt.push("");
+        }
+    }
+
+    render_file(f);
+    _h("#show",txt.join("\n"));
 }
 
 function show(id)
 {
 	var f = get_file(id);
+    if (f.data.length == 0)
+        return;
+
     _shown = f;
+    if (f.ext == "atr") {
+        show_atr(f);
+        return;
+    }
     if (f.ext == "bas") {
         show_bas(f);
         return;
@@ -2261,12 +2981,12 @@ function show(id)
         return;
     }
 
-    if (f.ext == "mic") {
-        show_mic(f);
+    var e = _exts[f.ext];
+    if (e && e.is_img) {
+        show_img(f);
         return;
     }
 
-    var e = _exts[f.ext];
     if (e && e.is_txt) {
         show_txt(f);
         return;
@@ -2274,10 +2994,20 @@ function show(id)
 
     render_file(f);
     if (e && e.is_code) {
-        _h("#show",xex_dump(f.file_name,f.data,0,f.data.length));
+        _h("#show",xex_dump(f.name,f.data,0,f.data.length,e.header));
         return;
     }
     _h("#show",hex_dump(f.data,0,f.data.length));
+}
+
+function show_as(e)
+{
+    if (_shown) {
+        if (!_shown.original_ext)
+            _shown.original_ext = _shown.ext;
+        _shown.ext = e;
+        refresh();    // select one
+    }
 }
 
 function refresh()
@@ -2302,7 +3032,17 @@ function load_data(name,a)
     var ext = get_ext(name,a);
 
 	if (ext != "atr") {        // not an atr file
-        var f = {file_name:name,name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7};
+        var f = {name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7};
+        var i = name.lastIndexOf(".");
+        var ext83 = ext;
+        if (i != -1) {
+            ext83 = name.substr(i+1);
+            name = name.substr(0,i);
+        }
+        f.name83 = name.substr(0,8);
+        while (f.name83 < 8)
+            f.name83 += ' ';
+        f.name83 += ext83.toUpperCase().substr(0,3);
         _containers.unshift({name:name,ext:ext,data:a,files:[f],id:_container_id++});         // single file
 	} else {
         // zero based sector offsets
@@ -2338,10 +3078,12 @@ function load_data(name,a)
             return new Uint8Array(data);
         }
 
+
         var atr = {data:a,name:name};
     	atr.size = le16(a,2) << 4;
     	atr.sector_size = le16(a,4);
     	atr.size += a[6] << 16;
+        var sector_count = (atr.size-128*3)/atr.sector_size + 3;
 
     	//	dump contents
     	//	http://atari.kensclassics.org/dos.htm
@@ -2350,23 +3092,35 @@ function load_data(name,a)
     	for (var s = 360; s < 368; s++) {
     		var i = sector_offset(s);
     		for (var e = 0; e < atr.sector_size/16; e++) {
+                var non_zero = 0;
+                for (var j = 0; j < 16; j++)
+                    if (a[i+j])
+                        non_zero++;
+                if (non_zero == 0)
+                    continue;
+
     			var f = {flags:a[i],total:le16(a,i+1),start:le16(a,i+3)-1};
-    			if (f.flags & 0x40) {
-                    f.file_name = toAscii(a,i+5,8).trim() + "." + toAscii(a,i+13,3).trim();
-                    f.name = toAscii(a,i+5,11).trim();
+                f.valid = (f.total < sector_count) && (f.start < sector_count);
+                //if (f.flags & 0x40) {
+                if (f.valid) {
+                    f.name = toAscii(a,i+5,8).trim() + "." + toAscii(a,i+13,3).trim();
+                    f.name83 = toAscii(a,i+5,11).trim();
                     f.number = -1;
                     f.data = file_read(f);
                     if (f.data) {
                         f.id = _id++;
-                        f.ext = get_ext(f.file_name,f.data);
+                        f.ext = get_ext(f.name,f.data);
                         files.push(f);
                     } else {
-                        console.log(f.file_name + " failed to read?");
+                        console.log(f.name + " failed to read?");
                     }
     			}
     			i += 16;
     		}
     	}
+        if (files.length)
+            files.push({name83:"",name:name,ext:"",data:[],id:_id++});  // spacer
+        files.push({name83:"[ sectors ]",name:name,ext:"atr",data:a,id:_id++,atr:atr});
         _containers.unshift({name:name,length:a.length,data:a,ext:"atr",files:files,id:_container_id++});
     }
 }
@@ -2377,26 +3131,41 @@ function load_data(name,a)
 
 function load()
 {
-    drop_init(_q("#toc"),function(file,ab) {
-    	load_data(file.name,new Uint8Array(ab));
-        render_state(_containers);
-        show(_containers[_containers.length-1].files[0].id);    // select one
-    });
+    drop_init(_q("#toc"),
+        (file,ab) => {
+            load_data(file.name,new Uint8Array(ab))
+        },
+        () => {
+            render_state(_containers);
+            show(_containers[0].files[0].id);    // select one
+        }
+    );
     _fcanvas = get_font(_font);
+    render_state(_containers);
 }
 
-function finfo(f)
+function ext_option(f)
 {
-    var t = _exts[f.ext] ? _exts[f.ext].name : "'" + f.ext + "' file";
-    return `<b>${f.name}</b><br/>(${f.data.length} bytes) ${t}`;
+    var s = `<div style='display:inline-block'><select onchange="show_as(this.value)">`;
+    Object.keys(_exts).forEach(ext => s += `<option value='${ext}' ${ext == f.ext ? 'selected':''}>${_exts[ext].name}</option>`);
+    s += `</select></div>`;
+    return s;
+}
+
+function finfo(f,option)
+{
+    var t = option ? ext_option(f) : (_exts[f.ext] ? _exts[f.ext].name : "'" + f.ext + "' file");
+    return `<b>${f.name}</b><br/>${t} (${f.data.length} bytes)`;
 }
 
 function render_state(m)
 {
     var h;
     if (m.length == 0) {
-        h = `<h2 style="text-align:center;color:#AAA">Drag Files Here<br/>(ATR,BAS,LST,XEX)</h2>`;
+        h = `<h2 style="text-align:center;color:#AAA">Drag Files Here</h2>`;
+
         _h("#tabs","");
+        _shown = null;
     } else
         h = m.map(container => 
         `<div>
@@ -2405,7 +3174,7 @@ function render_state(m)
             <ul id="menu">
             ${container.files.map(file => 
                 `<li onclick="show(${file.id})">
-                    <div><canvas class='zoomed' id="canvas${file.id}"></canvas></div>
+                    <div><canvas id="canvas${file.id}"></canvas></div>
                 </li>`
             ).join("")}
             </ul>
@@ -2415,13 +3184,21 @@ function render_state(m)
 
     function info(f)
     {
-        var s = '' + f.total;
-        while (s.length < 3)
-            s = '0' + s;
-        var n = f.name;
+        var s;
+        if (f.total) {
+            s = '' + f.total;
+            while (s.length < 3)
+                s = '0' + s;
+        } else {
+            s = '   ';
+        }
+        var n = f.name83;
         while (n.length < 11)
             n += ' ';
-        n += ' ';
+        if (n.length > 11)
+            n = n.substr(0,11) + '-';   // truncate
+        else
+            n += ' ';
         var locked = f.flags & 0x20 ? "*" : " ";
         return "  " + locked + " " + n + s + "  ";
     }
@@ -2429,6 +3206,14 @@ function render_state(m)
     m.forEach(container => {
         container.files.forEach(file => draw_line(`#canvas${file.id}`,info(file)));
     });
+
+    // show supported file types
+    if (m.length == 0) {
+        var s = `<div class='exts'>`;
+        Object.keys(_exts).forEach(ext => s += `<div><b>${ext}</b>${_exts[ext].name}<div>`);
+        s += `</div>`;
+        _h('#tabs',s);
+    }
 }
 
 function render_file(f)
@@ -2437,7 +3222,7 @@ function render_file(f)
     var img = _exts[f.ext] ? _exts[f.ext].is_img : false;
     _h("#tabs",
         `<div class='info'>
-            ${finfo(f)}
+            ${finfo(f,1)}
             ${txt ? `<button style="float:right;" onclick="save(1)">Save As LST</button>` : ""}
             <button style="float:right;" onclick="save(0)">Download</button>
             ${txt ? `<div class='radio' onclick="radio_click('layout',event)" style="float:right">${radio_init('layout',['40','80','Wide'])}</div>` : ""}
@@ -2455,10 +3240,17 @@ function render_file(f)
 <br/>
 </header>
 <div style="display:flex;flex-direction:row">
-<nav style="min-width:336px; margin-right:8px;" id="toc">
-<div id="menu_container" ><h2 style="text-align:center;color:#AAA">Drag Files Here<br/>(ATR,BAS,LST,XEX)</h2></div>
-<p style="text-align:center;"><a style="color:#AAA" href="https://github.com/rossumur/esp_8_bit">https://github.com/rossumur/esp_8_bit</a></p>
+
+<nav style="min-width:336px; max-width:336px; margin-right:8px;" id="toc">
+<div id="menu_container" >
+    <h2 style="text-align:center;color:#AAA" onclick="_q('#fe').click()" >Drag Files Here</h2>
+</div>
+<p style="text-align:center;">
+    <a style="color:#AAA" href="https://github.com/rossumur/esp_8_bit">https://github.com/rossumur/esp_8_bit</a>
+</p>
+<input type="file" id="fe" multiple style="display:none">
 </nav>
+
 <main style="border:solid 1px #CCC">
     <div id="tabs"></div>
 </main>
