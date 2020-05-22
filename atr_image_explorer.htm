@@ -625,6 +625,13 @@ function render_image(canvas,f)
         return ((atari_palette_rgb[p0] & 0x00FEFEFE) + (atari_palette_rgb[p1] & 0x00FEFEFE)) >> 1;
     }
 
+    // Atari Graphics Works?
+    if (ext == "scr" && data.length == 16000)
+    {
+        data = data.slice(0,7684);
+        ext = "gr7";
+    }
+
     switch (data.length)
     {
         case 3844:
@@ -2860,6 +2867,7 @@ var _exts = {
     "cin": {name:"Champions' Interlace", is_img:true },
     "pic": {name:"Koala MicroIllustrator", is_img:true },
     "raw": {name:"XL-Paint MAX Image", is_img:true },
+    "scr": {name:"Atari Graphics Works Image", is_img:true },
     "ist": {name:"Interlace Studio Image", is_img:true },
     "rip": {name:"Rocky Interlace Picture", is_img:true },
     "hip": {name:"Hard Interlace Picture", is_img:true },
@@ -2889,7 +2897,7 @@ function get_ext(name,a)
     if (sig == 0x296)
         return "atr";
 
-    if (sig == 0xFFFF)
+    if (sig == 0xFFFF && (le16(a,2) < le16(a,4)))
         return "xex";
 
     if (sig == 0x80FF && le16(a,2) == 0xC7C9)
@@ -3214,6 +3222,15 @@ function show_as(e)
     }
 }
 
+function toggle_hex()
+{
+    if (!_shown) return;
+    if (_shown.ext == "hex")
+        show_as(_shown.original_ext);
+    else
+        show_as("hex");
+}
+
 function refresh()
 {
     show(_shown.id);
@@ -3355,6 +3372,10 @@ function load()
             case 'o':
             case 'O':
                 _q("#fe").click();
+                break;  // open a file....
+            case 'h':
+            case 'H':
+                toggle_hex();
                 break;  // open a file....
         }
     };
