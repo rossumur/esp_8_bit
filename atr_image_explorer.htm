@@ -102,15 +102,17 @@ td {
 }
 .radio {
     cursor: pointer;
-    font-size: small;
-    height:18px;
-    margin-left: 16px;
-    margin-right: 16px;
+    font-size: x-small;
+    height:16px;
+    margin-left: 12px;
+    margin-right: 12px;
+    margin-top:4px;
 }
 .radio span {
     border: 1px solid #CCC;
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: 12px;
+    padding-right: 12px;
+    vertical-align: bottom;
 }
 .hilite {
     background: #CCF;
@@ -223,9 +225,9 @@ function esc(s)
 	return n;
 }
 
-function hex_line(addr,data,i,len)
+function hex_line(addr,data,i,len,awidth)
 {
-	var s = [hex(addr,6) + " "];
+	var s = [hex(addr,awidth || 6) + "   "];
 	var p = '';
     var pad = 16-len;
 	while (len--) {
@@ -241,11 +243,11 @@ function hex_line(addr,data,i,len)
 	return s.join('') + " " + p;
 }
 
-function hex_dump(a,i,len)
+function hex_dump(a,i,len,awidth)
 {
 	var hex = [];
 	for (var j = 0; j < len; j += 16)
-		hex.push(hex_line(j,a,i+j,Math.min(16,len-j)));
+		hex.push(hex_line(j,a,i+j,Math.min(16,len-j),awidth));
 	return hex.join("\n");
 }
 
@@ -973,11 +975,11 @@ function show_ataritext(f,lst,font)
         fcanvas = get_font(font);
 
     var layout = _radios["layout"].value;
-    var cols = layout == 0 ? 40:80;
-    var margin = 2;
+    var cols = layout < 2 ? 40:80;
+    var margin = layout == 0 ? 2 : 0;
     var wrap = [];
 
-    if (layout == 2) {  // Don't wrap at all
+    if (layout == 3) {  // Don't wrap at all
         lst.forEach(line => cols = Math.max(line.length,cols));
         cols += 2*margin;
         wrap = lst;
@@ -1001,8 +1003,8 @@ function show_ataritext(f,lst,font)
     ctx.fillStyle = "rgba(17,59,128,1)";
     ctx.fillRect(0, 0, c.width, c.height);
     for (var y = 0; y < wrap.length; y++)
-        draw(ctx,wrap[y],2,y+1,fcanvas);
-    resize_parent(c,layout == 2 ? 1:2);
+        draw(ctx,wrap[y],margin,y+1,fcanvas);
+    resize_parent(c,layout == 3 ? 1:2);
 }
 
 var _font = [
@@ -1202,6 +1204,121 @@ function drop_init(el,onfile,all_done)
     el.addEventListener('dragleave', e => over(0), false);
 
     _q("#fe").addEventListener("change", e => handleFiles(_q("#fe").files), false);
+}
+
+//===================================================================================================
+//===================================================================================================
+// http://www.atarimax.com/jindroush.atari.org/afmtbas.html
+// Disassemble m65
+
+var _mac65_table1 = [
+    "ERROR -", ".IF",     ".ELSE",   ".ENDIF",  ".MACRO",  ".ENDM",   ".TITLE",  "",        
+    ".PAGE",   ".WORD",   ".ERROR",  ".BYTE",   ".SBYTE",  ".DBYTE",  ".END",    ".OPT",    
+    ".TAB",    ".INCLUDE",".DS",     ".ORG",    ".EQU",    "BRA",     "TRB",     "TSB",     
+    ".FLOAT",  ".CBYTE",  ";",       ".LOCAL",  ".SET",    "*=",      "=",       ".=",      
+    "JSR",     "JMP",     "DEC",     "INC",     "LDX",     "LDY",     "STX",     "STY",     
+    "CPX",     "CPY",     "BIT",     "BRK",     "CLC",     "CLD",     "CLI",     "CLV",     
+    "DEX",     "DEY",     "INX",     "INY",     "NOP",     "PHA",     "PHP",     "PLA",     
+    "PLP",     "RTI",     "RTS",     "SEC",     "SED",     "SEI",     "TAX",     "TAY",     
+    "TSX",     "TXA",     "TXS",     "TYA",     "BCC",     "BCS",     "BEQ",     "BMI",     
+    "BNE",     "BPL",     "BVC",     "BVS",     "ORA",     "AND",     "EOR",     "ADC",     
+    "STA",     "LDA",     "CMP",     "SBC",     "ASL",     "ROL",     "LSR",     "ROR",     
+    "",        "STZ",     "DEA",     "INA",     "PHX",     "PHY",     "PLX",     "PLY",     
+];
+
+var _mac65_table2 = [
+    null,    null,    null,    null,    null,    "",      "",      "",      
+    "",      null,    "",      "%$",    "%",    "*",     null,    null,    
+    null,    null,    "+",     "-",     "*",     "/",     "&",     null,    
+    "=",     "<=",    ">=",    "<>",    ">",     "<",     "-",     "[",     
+    "]",     null,    null,    null,    "!",     "^",     null,    "\\",     
+    null,    null,    null,    null,    null,    null,    null,    ".REF",  
+    ".DEF",  ".NOT",  ".AND",  ".OR",   "<",     ">",     ",X)",   "),Y",   
+    ",Y",    ",X",    ")",     "",      null,    ",",     "#",     "A",     
+    "(",     '"',     null,    null,    null,    "NO",    "OBJ",   "ERR",   
+    "EJECT", "LIST",  "XREF",  "MLIST", "CLIST", "NUM",   null,    null,    
+];
+
+function mac65(a,i,len)
+{
+    if (le16(a,i) != 0xFEFE)
+        return null;
+    if (le16(a,i+2) != (len-4))
+        return null;
+    var end = i + len;
+    i += 4;
+
+    var indent = 5;
+    var asm = [];
+    while (i < len) {
+        var line_number = le16(a,i);
+        var line_end = i + a[i+2];
+        i += 3;
+
+        var s = line_number + ' ';
+        var pad = (''+line_number).length + indent;
+        var c = a[i++];
+        if (c & 0x80) {
+            c -= 0x80;  // label
+            while (c--)
+                s += String.fromCharCode(a[i++]);
+            if (i == line_end)
+            {
+                asm.push(s);
+                continue;
+            }
+            c = a[i++];
+        } else if (c == 0 || c == 88) {
+            while (i < line_end)
+                s += String.fromCharCode(a[i++]);   // raw
+            asm.push(s);
+            continue;
+        } else if (c == 1) {
+            indent++;           // IF
+        } else if (c == 3) {
+            indent--;           // ENDIF
+        }
+
+        if (c >= 96)
+            return null;
+        while (s.length < pad)
+            s += ' ';
+        if (s[s.length-1] != ' ')
+            s += ' ';
+        s += _mac65_table1[c] + ' ';   // token
+
+        while (i < line_end) {
+            c = a[i++];
+            switch (c) {
+                case 5: s += '$'+hex(le16(a,i),4); i += 2;      break;
+                case 6: s += '$'+hex(a[i++]);                   break;
+                case 7: s += le16(a,i); i += 2;                 break;
+                case 8: s += a[i++];                            break;
+                case 10: s += "'"+String.fromCharCode(a[i++]);  break;
+                case 59:
+                    s += ' ';
+                    while (i < line_end)
+                        s += String.fromCharCode(a[i++]);   // comment
+                    break;
+                default:
+                    if (c & 0x80) {
+                        c -= 0x80;
+                        while (c--)
+                            s += String.fromCharCode(a[i++]);
+                    } else {
+                        var t = _mac65_table2[c];
+                        if (!t)
+                            return null;
+                        s += t;
+                        if (c > 64)
+                            s += ' ';   // not sure all of all the padding rules
+                    }
+                    break;
+            }
+        }
+        asm.push(s);
+    }
+    return asm;
 }
 
 //===================================================================================================
@@ -2360,7 +2477,7 @@ var steptab = {
 };
 
 // functions
-function disassembleStep(pc,ram,asm)
+function disassembleStep(pc,ram,asm,flags)
 {
     var instr, op1, op2, addr, ops, disas, adm, step;
     var symbol;
@@ -2465,110 +2582,117 @@ function disassembleStep(pc,ram,asm)
     }        
     if (ops=='')
         ops='        ';
-    asm.push({pc:pc,instr:instr,valid:instr && disas != '???',
+
+    // mark validty, enrty and exit points
+    // 1 = valid
+    // 8 = end of block
+    // 0x80 = start of block
+    var valid = instr && disas != '???';
+    if (valid) {
+        for (var i = 0; i < step; i++)
+            flags[i+pc] |= 1;    // valid code
+        var a = ram[pc+1] + (ram[pc+2] << 8);
+        switch (instr) {
+            case 0x20: flags[a] |= 0x80; break; // jsr
+            case 0x4C: flags[a] |= 0x80; flags[pc] |= 0x48; break; // jmp
+            case 0x40: flags[pc] |= 0x28; break; // rti
+            case 0x60: flags[pc] |= 0x18; break; // rts
+        }
+        if (adm == 'rel')
+            flags[targ] |= 0x80;
+    }
+
+    asm.push({pc:pc,step:step,valid:valid,
         s:addr+'   '+ops+'   '+disas + (symbol ? " ; " + symbol[0] + " <i>" +  symbol[1] + "</i>": "")});
     return (pc+step)&0xffff;
 }
 
-function dis(addr,data,i,len)
+//  First disassembly pass
+function disassemble(addr,data,i,len,ram,flags)
 {
-    function mark_as_data(i,to)
-    {
-        while (--i) {
-            var a = asm[i];
-            if (a.pc && (a.pc < to))
-                break;
-            asm[i].valid = -1;
-        }
-    }
-
     var asm = [];
-    var ram = [];
-    var stat = [];
     for (var j = 0; j < len; j++)
         ram[addr+j] = data[i+j];
-
     var pc = addr;
-    var bad_count = 0;
-    var good_count = 0;
-    var bad_run = 0;
-    var good_run = 0;
-    var repeated = 0;
-    var last = 0;
-    var mark = pc;
-    while (pc < (addr+len)) {
-        pc = disassembleStep(pc,ram,asm);
-        var s = asm[asm.length-1];
+    while (pc < (addr+len))
+        pc = disassembleStep(pc,ram,asm,flags);
+    return asm;
+}
 
-        if (s.instr == last) {
-            repeated++;
-        } else {
-            if ((repeated > 2) && (last == 0x40 || last == 0x60))
-                mark_as_data(asm.length,asm[asm.length-repeated].pc);    // data pretending to be rts/rti
-            repeated = 0;
-            last = s.instr;
-        }
+// Two pass: disassembly then basic blocks
+function disassemble2(asm,str,ram,flags)
+{
+    var start = 0xFFFF;
+    var end = 0;
+    asm.forEach(a => {
+        a.flags = flags[a.pc];
+        start = Math.min(start,a.pc);
+        end = Math.max(end,a.pc,a.step);
+        //a.s = hex(a.flags) + ":" + a.s;
+    });
 
-        if (s.valid) {
-            good_count++;
-            good_run++;
-            bad_run = 0;
-        }
-        else {
-            bad_count++;
-            bad_run++;
-            good_run = 0;
-        }
-
-        switch (s.instr) {
-            case 0x40: // RTO
-            case 0x4C: // JMP
-            case 0x60: // RTS
-                s.block_end = 1;
-                break;
-        }
-
-        if (s.block_end)  {
-            if (bad_count)
-                mark_as_data(asm.length - good_run,mark);    // backup to the last mark
-            mark = pc;
-            good_count = good_run = bad_count = bad_run = 0;
-        }
+    function separator()
+    {
+        if (str[str.length-1] == "")
+            return;
+        str.push("");
     }
 
-    function flush(from,to)
+    function as_data(from,to)
     {
         str.push("; Data " + hex(from,4) + " to " +  hex(to-1,4) + " (" + (to-from) + " bytes)");
         while (from < to) {
             var mx = 16 - (from & 0xF);
             var n = Math.min(mx,to-from);
-            var s = hex(from,4) + "  ";
-            while (n--)
-                s += hex(ram[from++]) + " ";
-            str.push(s);
+            str.push(hex_line(from,ram,from,n,4));
+            from += n;
         }
-        str.push("");
+        separator();
     }
 
-    var str = ["; Disassembly of " + hex(addr,4) + " to " + hex(addr+len-1,4),""];
-    var data = null;
+    var blocks = [];    // slice into blocks
+    var block = {lines:[],errs:0};
+    function flush_block()
+    {
+        if (block.lines.length)
+            blocks.push(block);
+        block = {lines:[],errs:0};
+    }
     asm.forEach(a => {
-        if (a.valid != -1) {
-            if (data)
-                flush(data.pc,a.pc);
-            data = null;
-            str.push(a.s);
-            if (a.block_end)
-                str.push("");
-        } else {
+        if (a.flags & 0x80)
+            flush_block();
+        block.lines.push(a);
+        if (!a.valid)
+            block.errs++;
+        if ((a.flags & 0x08) && block.errs == 0)
+            flush_block();
+    });
+    flush_block();
+
+    // determine if each block is ASM or DATA
+    var first_code = true;
+    separator();
+    var data = 0;
+    blocks.forEach(block => {
+        if (block.errs) {
             if (!data)
-                data = {pc:a.pc};
+                data = block.lines[0].pc;           // start of data
+        } else {
+            if (data) {
+                as_data(data,block.lines[0].pc);    // end of data
+                data = 0;
+            }
+            if (first_code) {
+                str.push("; Disassembly of " + hex(start,4) + " to " + hex(end-1,4));
+                first_code = false;
+            }
+            block.lines.forEach(a => str.push(a.s));
         }
+        separator();
     });
     if (data)
-        flush(data.pc,asm[asm.length-1].pc);
-    str.push("");
-    return str;
+        as_data(data,end);
+    separator();
 }
 
 // eof
@@ -2615,10 +2739,22 @@ function ataritext(a)
 	return lst;
 }
 
+function parse_failed(f)
+{
+    return [`Can't parse ${f.name} as a ${f.ext} file`]; //'
+}
+
+function show_m65(f)
+{
+    var asm = mac65(f.data,0,f.data.length);
+    // expand tabs?
+    show_ataritext(f,asm ? asm : parse_failed(f));
+}
+
 function show_bas(f)
 {
     var t = ataribasic(f.data,0,f.data.length);
-    show_ataritext(f,t.listing);
+    show_ataritext(f,t ? t.listing: parse_failed(f));
 }
 
 function show_txt(f)
@@ -2694,6 +2830,9 @@ function show_fnt(f)
 
 var _exts = {
     "atr": {name:"ATR Disk Image"},
+    "dat": {name:"Raw Data"},
+
+    "--0": {name:"Languages"},
     "bas": {name:"Atari Basic", is_txt:true },
     "lst": {name:"Atari Basic Listing", is_txt:true },
     "asm": {name:"Assembly Listing", is_txt:true },
@@ -2703,14 +2842,16 @@ var _exts = {
     "ata": {name:"ATASCII Text File", is_txt:true },
     "txt": {name:"Text File", is_txt:true },
 
+    "--1": {name:"Graphics"},
     "fnt": {name:"Font File", is_txt:true, font_set:true },
     //"set": {name:"Font File", is_txt:true font_set:true },
 
-    "mic": {name:"Micropainter Image", is_img:true },
     "gr7": {name:"Graphics 7 Image", is_img:true },
     "gr8": {name:"Graphics 8 Image", is_img:true },
     "gr9": {name:"Graphics 9 Image", is_img:true },
     "g10": {name:"Graphics 10 Image", is_img:true },
+
+    "mic": {name:"Micropainter Image", is_img:true },
     "apc": {name:"APAC 256 Color Image", is_img:true },
     "plm": {name:"Plasma 256 Color Image", is_img:true },
     "pzm": {name:"Pryzm Artist Image", is_img:true },
@@ -2724,6 +2865,7 @@ var _exts = {
     "hip": {name:"Hard Interlace Picture", is_img:true },
     "tip": {name:"Taquart Interlace Picture", is_img:true },
 
+    "--2": {name:"Executables"},
     "sys": {name:"System", is_code:true },
     "xex": {name:"Load and Go Executable", is_code:true, header:true },
     "exe": {name:"Load and Go Executable (exe)", is_code:true, header:true },
@@ -2731,8 +2873,6 @@ var _exts = {
     "rom": {name:"ROM Dump File", is_code:true },
     "car": {name:"Cartridge File", is_code:true },
     "obj": {name:"Object Code", is_code:true },
-
-    "dat": {name:"Raw Data"},
 };
 
 // guss the file type
@@ -2757,6 +2897,9 @@ function get_ext(name,a)
 
     if (sig == 0x4952)
         return "rip";
+
+    if (sig == 0xFEFE)
+        return "m65";
 
     if (ataribasic(a,0,a.length))
         return "bas";
@@ -2799,9 +2942,14 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
 {
     if (name == "DOS.SYS")
         org = 0x07CB;   // http://data.atariwiki.org/DOC/Inside_Atari_DOS_GBXL.pdf
+
+    var flags = new Uint8Array(0x10000);
+    var ram = new Uint8Array(0x10000);
     var entry_points = [];
-    if (entry)
+    if (entry) {
+        flags[entry] = 0x80;
         entry_points.push(entry);
+    }
 
     var header = le16(a,i) == 0xFFFF;   // 
     var lines = [];
@@ -2809,7 +2957,7 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
     {
         org = org || 0x700;
         var sig = le32(a,i);
-        if (sig = 0x52544143) // 'CART'
+        if (sig == 0x54524143) // 'CART'
         {
             org = 0x8000;
             i += 16;        // Cart file
@@ -2817,8 +2965,17 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
         }
 
         lines.push("; file " + name + " is " + len + " bytes");
-        var asm = dis(org,a,i,len);  // disassemble all of it
-        asm.forEach(line => lines.push(line));
+        if (entry != org)
+            entry_points.unshift(org);
+        entry_points.push(org+len);
+        var asms = [];
+        for (var j = 0; j < entry_points.length-1; j++) {  // try and get good starting points on entry
+            var ep = entry_points[j];
+            var ln = entry_points[j+1]-ep;
+            asms.push(disassemble(ep,a,i,ln,ram,flags));
+            i += ln;
+        }
+        asms.forEach(asm => disassemble2(asm,lines,ram,flags));
     } else {
         lines.push("; file " + name + " is " + len + " bytes");
         var segs = [];
@@ -2826,6 +2983,7 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
         var s;
 
         // walk segments, collect entry points
+        // draw them all at head, repeat them in body
         while (i < e) {
             var start = 0xFFFF;
             var end = 0xFFFF;
@@ -2847,6 +3005,7 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
             if ((slen == 2) && (start == 0x2E0 || start == 0x2E2)) {
                 seg.addr = le16(a,i);
                 entry_points.push(seg.addr);
+                flags[seg.addr] = 0x80;
                 s += " -> " + (start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
             }
             lines.push(s);
@@ -2856,18 +3015,23 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
         lines.push("");
 
         // Do the disassembly
+        var asms = {};
+        segs.forEach(seg => {
+            if (!seg.addr)
+                asms[seg.offset] = disassemble(seg.start,a,seg.offset,seg.end+1 - seg.start,ram,flags);  // disassemble segment
+        });
+
+        // Do the disassembly
         segs.forEach(seg => {
             lines.push("; ===================================================");
             var slen = seg.end+1 - seg.start;
-            s = "; code segment " + slen + " bytes at " + hex(start,4) + ":" +  hex(end,4);
+            s = "; code segment " + slen + " bytes at " + hex(seg.start,4) + ":" +  hex(seg.end,4);
             if (seg.addr)
-                s += " -> " + (start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
+                s += " -> " + (seg.start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
             lines.push(s);
             lines.push('');
-            if (!seg.addr) {
-                var asm = dis(seg.start,a,seg.offset,slen);  // disassemble segment
-                asm.forEach(line => lines.push(line));
-            }
+            if (asms[seg.offset])
+                disassemble2(asms[seg.offset],lines,ram,flags);
         });
     }
     return lines.join("\n");
@@ -2957,7 +3121,9 @@ function show_atr(f)
     txt.push("");
     var size = sector_offset(_br.BRCNT);    // 0 based
     var boot = d.slice(16,size);
-    txt.push(xex_dump("boot",boot,0,boot.length,0,_br.BLDADDR,_br.BCONT));
+    var cont = _br.BCONT - _br.BLDADDR;
+    cont = (cont < 0 || cont >= boot.length) ? _br.BLDADDR : _br.BCONT;
+    txt.push(xex_dump("boot",boot,0,boot.length,0,_br.BLDADDR,cont));
 
     var n = 0;
     for (;;)
@@ -2980,7 +3146,7 @@ function show_atr(f)
         }
         txt.push("; Sector " + n + (zero ? " (" + size + " zeros)":""));
         if (!zero)
-            txt.push(hex_dump(d,offset,size));
+            txt.push(hex_dump(d,offset,size,4));
         txt.push("");
         if (n == _br.BRCNT) {
             txt.push("; ===================================================");
@@ -3006,6 +3172,11 @@ function show(id)
     }
     if (f.ext == "bas") {
         show_bas(f);
+        return;
+    }
+
+    if (f.ext == "m65") {
+        show_m65(f);
         return;
     }
 
@@ -3076,7 +3247,7 @@ function load_data(name,a)
         while (f.name83 < 8)
             f.name83 += ' ';
         f.name83 += ext83.toUpperCase().substr(0,3);
-        _containers.unshift({name:name,ext:ext,data:a,files:[f],id:_container_id++});         // single file
+        _containers.unshift({name:f.name,ext:ext,data:a,files:[f],id:_container_id++});         // single file
 	} else {
         // zero based sector offsets
         function sector_offset(n)
@@ -3179,13 +3350,21 @@ function load()
         }
     );
     _fcanvas = get_font(_font);
+    document.body.onkeydown = function (e) {
+        switch (e.key) {
+            case 'o':
+            case 'O':
+                _q("#fe").click();
+                break;  // open a file....
+        }
+    };
     render_state(_containers);
 }
 
 function ext_option(f)
 {
     var s = `<div style='display:inline-block'><select onchange="show_as(this.value)">`;
-    Object.keys(_exts).forEach(ext => s += `<option value='${ext}' ${ext == f.ext ? 'selected':''}>${_exts[ext].name}</option>`);
+    Object.keys(_exts).forEach(ext => s += `<option ${ext[0] == '-' ? "disabled":""} value='${ext}' ${ext == f.ext ? 'selected':''}>${_exts[ext].name}</option>`);
     s += `</select></div>`;
     return s;
 }
@@ -3222,14 +3401,14 @@ function render_state(m)
 
     function info(f)
     {
-        var s;
+        var s = '';
         if (f.total) {
             s = '' + f.total;
             while (s.length < 3)
                 s = '0' + s;
-        } else {
-            s = '   ';
         }
+        while (s.length < 4)
+            s = ' ' + s;
         var n = f.name83;
         while (n.length < 12)
             n += ' ';
@@ -3244,7 +3423,10 @@ function render_state(m)
     // show supported file types
     if (m.length == 0) {
         var s = `<div class='exts'>`;
-        Object.keys(_exts).forEach(ext => s += `<div><b>${ext}</b>${_exts[ext].name}<div>`);
+        Object.keys(_exts).forEach(ext => s += ext[0] == '-' ?
+            `<div><b></b><strong>${_exts[ext].name}</strong><div>` :
+            `<div><b>${ext}</b>${_exts[ext].name}<div>`
+        );
         s += `</div>`;
         _h('#tabs',s);
     }
@@ -3259,7 +3441,7 @@ function render_file(f)
             ${finfo(f,1)}
             ${txt ? `<button style="float:right;" onclick="save(1)">Save As LST</button>` : ""}
             <button style="float:right;" onclick="save(0)">Download</button>
-            ${txt ? `<div class='radio' onclick="radio_click('layout',event)" style="float:right">${radio_init('layout',['40','80','Wide'])}</div>` : ""}
+            ${txt ? `<div class='radio' onclick="radio_click('layout',event)" style="float:right">${radio_init('layout',['38','40','80','Wide'])}</div>` : ""}
         </div>
         <div id="file">${(txt || img) ? `<div><canvas id="show"></canvas></div>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
     );
@@ -3275,7 +3457,7 @@ function render_file(f)
 </header>
 <div style="display:flex;flex-direction:row">
 
-<nav style="min-width:336px; max-width:336px; margin-right:8px;" id="toc">
+<nav style="min-width:352px; max-width:352px; margin-right:8px;" id="toc">
 <div id="menu_container" >
     <h2 style="text-align:center;color:#AAA" onclick="_q('#fe').click()" >Drag Files Here</h2>
 </div>
