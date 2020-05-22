@@ -77,6 +77,7 @@ td {
     min-height: 24px;
     padding: 8px;
     border-bottom: 1px solid #CCC;
+    overflow: hidden;
 }
 
 .close-icon
@@ -129,6 +130,38 @@ td {
     margin-right: 16px;
     width : 100px;
     text-align:right;
+}
+.open {
+    display: inline-block;
+    font-size: large;
+    cursor: pointer;
+    width: 200px;
+    border: solid 1px #CCC;
+    font-weight: 300;
+    margin: 20px;
+    color: #AAA;
+}
+.open:hover {
+    color: #888;
+    border: solid 1px #888;
+}
+.open:active {
+    color: #FFF;
+    border: solid 1px #FFF;
+}
+.showcode {
+    cursor: pointer;
+    font-size: x-small;
+    height:16px;
+    padding: 2px 4px;
+    margin-left: 12px;
+    margin-right: 12px;
+    margin-top:4px;
+    border: solid 1px #CCC;
+}
+.showcode:hover {
+    color: #F00;
+    border: solid 1px #F00;
 }
 </style>
 
@@ -1334,21 +1367,37 @@ function mac65(a,i,len)
 // Disassemble atari basic
 
 var _basic_commands = [
+    // 56 in classic Basic
 	"REM","DATA","INPUT","COLOR","LIST","ENTER","LET","IF","FOR","NEXT","GOTO",
 	"GO TO","GOSUB","TRAP","BYE","CONT","COM","CLOSE","CLR","DEG","DIM","END",
 	"NEW","OPEN","LOAD","SAVE","STATUS","NOTE","POINT","XIO","ON","POKE","PRINT",
 	"RAD","READ","RESTORE","RETURN","RUN","STOP","POP","?","GET","PUT","GRAPHICS",
 	"PLOT","POSITION","DOS","DRAWTO","SETCOLOR","LOCATE","SOUND","LPRINT","CSAVE",
-	"CLOAD","LET_","ERROR"
+	"CLOAD","LET_","ERROR",
+
+    // Turbo Basic
+    "DPOKE ","MOVE ","-MOVE ","*F" ,"REPEAT ","UNTIL ","WHILE ","WEND ",
+    "ELSE ","ENDIF ","BPUT ","BGET ","FILLTO ","DO ","LOOP ","EXIT ",
+    "DIR ","LOCK ","UNLOCK ","RENAME ","DELETE ","PAUSE ","TIME$= ","PROC ",
+    "EXEC ","ENDPROC ","FCOLOR ","*L ",
+    "------------------------------" + String.fromCharCode(0x9B),
+    "RENUM ","DEL ","DUMP ",
+    "TRACE ","TEXT ","BLOAD ","BRUN ","GO# ","# ", "*B ","PAINT ",
+    "CLS ","DSOUND ","CIRCLE ","%PUT ","%GET "
 ];
 
 var _basic_operators = [
 	"_0","_1","_2","_3","_4","_5","_6","_7","_8","_9","_A","_B","_C","_D",
-	"NCONST","SCONST","NOUSE","NOUSE",",","$",":",";","EOL","GOTO","GOSUB"," TO ",
+	"NCONST","SCONST","NOUSE","NOUSE",",","$",":",";","EOL"," GOTO "," GOSUB "," TO ",
 	" STEP "," THEN ","#","<=","<>",">=","<",">","=","^","*","+","-","/"," NOT "," OR "," AND ",
 	"(",")","=","=","<=","<>",">=","<",">","=","+","-","(","(","(","(","(",",",
 	"STR$","CHR$","USR","ASC","VAL","LEN","ADR","ATN","COS","PEEK","SIN","RND","FRE",
-	"EXP","LOG","CLOG","SQR","SGN","ABS","INT","PADDLE","STICK","PTRIG","STRIG"
+	"EXP","LOG","CLOG","SQR","SGN","ABS","INT","PADDLE","STICK","PTRIG","STRIG",
+
+    // Turbo Basic
+    "DPEEK","&","!","INSTR","INKEY$"," EXOR ","HEX$","DEC",
+    " DIV ","FRAC","TIME$","TIME"," MOD ","EXEC ","RND","RAND",
+    "TRUNC","%0","%1","%2","%3","GO# ","UINSTR","ERR","ERL"
 ];
 
 // convert a basic file to a LST
@@ -1372,6 +1421,8 @@ function ataribasic(a,i,len)
     {
         reason = reason || "Bytes don't look like Basic";
         console.log(reason);
+        console.log(b);
+        console.log(listing);
         return null;
     }
 
@@ -1389,8 +1440,12 @@ function ataribasic(a,i,len)
 
 	function get_string(data,si,len) {
 		var s = '';
-		while (len--)
-			s += String.fromCharCode(data[si++]);
+		while (len--) {
+            var c = String.fromCharCode(data[si++]);
+			s += c;
+            if (c == '"')
+                s += c;
+        }
 		return s;
 	}
 
@@ -1421,28 +1476,26 @@ function ataribasic(a,i,len)
 	var vnt_begin = i + b.vnt;
 	var vnt_end = i + b.vnte;
 	var n = '';
-    var last_name;
-    var diff_names = 0;
+    var nmap = {};
+    var ncount = 0;
 	for (var j = vnt_begin; j < vnt_end; j++) {
 		n += String.fromCharCode(a[j]&0x7F);
 		if (a[j] & 0x80)
 		{
 			if (n.length && n[n.length-1] == '(')
 				n = n.substr(0,n.length-1);	// 
-
-            if (last_name) {    // check for scrubbed name table
-                if (n != last_name)
-                    diff_names++;
-            }
-            last_name = n;
-
+            nmap[n] = 1;
+            ncount++;
 			b.variable_names.push(n);
 			n = '';
 		}
 	}
 
-    if (diff_names == 0)
+    if (Object.keys(nmap).length == 1 && ncount > 1)
+    {
+        console.log("resetting variable names");
         b.variable_names = [];  // name table was set to the same value: reset it
+    }
 
 	var vvt_begin = i + b.vvt;	// NOT SURE WHY THESE ARE +1
 	var tokens_begin = i + b.stmtab;
@@ -1489,6 +1542,7 @@ function ataribasic(a,i,len)
 
     //var tokens_end = i+b.stmcur;
     var tokens_end = i+b.starp; // kings cribbage see https://www.atariarchives.org/mapping/memorymap.php STMCUR
+    var turbo = false;
 
 	var listing = [];
 	for (var j = tokens_begin; j < tokens_end;) {
@@ -1508,12 +1562,18 @@ function ataribasic(a,i,len)
 			var end = a[j+k];
 			var cmd = a[j+k+1];
 			k += 2;
-            if (cmd >= 56)
-                return failed("Unrecognized command index:" + cmd);    // not basic
+            if (cmd >= 56) {
+                turbo = true;
+                if (cmd >= 101)
+                    return failed("Unrecognized command index:" + cmd);    // not basic
+            }
 
 			s.tok.push(_basic_commands[cmd]);
-			if (cmd != 0x36)	// slient LET
-			    line += _basic_commands[cmd] + " ";
+			if (cmd != 0x36) {	// slient LET
+			    line += _basic_commands[cmd];
+                if (line[line.length-1] != ' ')
+                    line += ' ';
+            }
 
 			if (cmd < 2) {	// REM,DATA
 				var txt = '';
@@ -1543,6 +1603,15 @@ function ataribasic(a,i,len)
 						s.tok.push(txt);
 						line += '"' + txt + '"';
 						break;
+                    case 0x0D: // BCD hex const
+                        var n = bcd(a,j+k);
+                        var c = 1;
+                        while (n >= (1 << c*8))
+                            c++;
+                        s.tok.push(n);
+                        k += 6;
+                        line += '$' + hex(n,c*2);
+                        break;
 					case 0x0E: // NCONST
 						var n = bcd(a,j+k);
 						s.tok.push(n);
@@ -1557,13 +1626,15 @@ function ataribasic(a,i,len)
 						if (op & 0x80)
 							txt = b.variable_names[op&0x7F];
                         else {
-                            if (op >= 85)
-                                return failed("Unrecognized operation:" + op);    // not basic
+                            if (op >= 85) {
+                                turbo = true;
+                                if (op >= 110)
+                                    return failed("Unrecognized operation:" + op);    // not basic
+                            }
 							txt = _basic_operators[op];
-                            if (cmd == 30 && (txt == "GOTO" || txt == "GOSUB"))   // on/goto/gosub
-                                txt = " " + txt + " ";
                         }
-
+                        if (txt == ":" || txt[0] == ' ')
+                            line = line.trim();
 						line += txt;
 						s.tok.push(txt);
 					}
@@ -2645,9 +2716,34 @@ function disassemble2(asm,str,ram,flags)
         str.push("");
     }
 
-    function as_data(from,to)
+    function end_of_lines(lines)
     {
-        str.push("; Data " + hex(from,4) + " to " +  hex(to-1,4) + " (" + (to-from) + " bytes)");
+        return lines[lines.length-1].pc + lines[lines.length-1].step;
+    }
+    function runny(lines)
+    {
+        var start = lines[0].pc;
+        var end = end_of_lines(lines);
+        if ((end-start) < 2)
+            return;
+        for (var i = start+1; i < end; i++)
+            if (ram[start] != ram[i])
+                return false;
+        return true;    // All data is the same value
+    }
+
+    function as_data(blocks)
+    {
+        var from = blocks[0].lines[0].pc;
+        var to = end_of_lines(blocks[blocks.length-1].lines);
+
+        var key = hex(from,4);
+        str.push(`; Data ${key} to ${hex(to-1,4)} (${to-from} bytes)<em class='showcode' onclick='toggle("#_${key}")'>Show As Code</em>`);
+        //  stick all the code in too
+        str.push(`<div id='_${key}' style='color:#F00;display:none'>`);
+        blocks.forEach(block => block.lines.forEach(line => str.push(line.s)));
+        str.push("</div>");
+
         while (from < to) {
             var mx = 16 - (from & 0xF);
             var n = Math.min(mx,to-from);
@@ -2657,7 +2753,8 @@ function disassemble2(asm,str,ram,flags)
         separator();
     }
 
-    var blocks = [];    // slice into blocks
+    // slice into blocks, mark those
+    var blocks = [];
     var block = {lines:[],errs:0};
     function flush_block()
     {
@@ -2679,15 +2776,14 @@ function disassemble2(asm,str,ram,flags)
     // determine if each block is ASM or DATA
     var first_code = true;
     separator();
-    var data = 0;
+    var data = [];
     blocks.forEach(block => {
-        if (block.errs) {
-            if (!data)
-                data = block.lines[0].pc;           // start of data
+        if (block.errs || runny(block.lines)) {
+            data.push(block);           // start of data
         } else {
-            if (data) {
-                as_data(data,block.lines[0].pc);    // end of data
-                data = 0;
+            if (data.length) {
+                as_data(data);    // end of data
+                data = [];
             }
             if (first_code) {
                 str.push("; Disassembly of " + hex(start,4) + " to " + hex(end-1,4));
@@ -2697,8 +2793,8 @@ function disassemble2(asm,str,ram,flags)
         }
         separator();
     });
-    if (data)
-        as_data(data,end);
+    if (data.length)
+        as_data(data);
     separator();
 }
 
@@ -3169,47 +3265,53 @@ function show_atr(f)
 
 function show(id)
 {
-	var f = get_file(id);
-    if (f.data.length == 0)
-        return;
+    try {
+            	var f = get_file(id);
+        if (f.data.length == 0)
+            return;
 
-    _shown = f;
-    if (f.ext == "atr") {
-        show_atr(f);
-        return;
-    }
-    if (f.ext == "bas") {
-        show_bas(f);
-        return;
-    }
+        _shown = f;
+        if (f.ext == "atr") {
+            show_atr(f);
+            return;
+        }
+        if (f.ext == "bas") {
+            show_bas(f);
+            return;
+        }
 
-    if (f.ext == "m65") {
-        show_m65(f);
-        return;
-    }
+        if (f.ext == "m65") {
+            show_m65(f);
+            return;
+        }
 
-    if (f.ext == "fnt" || f.ext == "set") {
-        show_fnt(f);
-        return;
-    }
+        if (f.ext == "fnt" || f.ext == "set") {
+            show_fnt(f);
+            return;
+        }
 
-    var e = _exts[f.ext];
-    if (e && e.is_img) {
-        show_img(f);
-        return;
-    }
+        var e = _exts[f.ext];
+        if (e && e.is_img) {
+            show_img(f);
+            return;
+        }
 
-    if (e && e.is_txt) {
-        show_txt(f);
-        return;
-    }
+        if (e && e.is_txt) {
+            show_txt(f);
+            return;
+        }
 
-    render_file(f);
-    if (e && e.is_code) {
-        _h("#show",xex_dump(f.name,f.data,0,f.data.length,e.header));
-        return;
+        render_file(f);
+        if (e && e.is_code) {
+            _h("#show",xex_dump(f.name,f.data,0,f.data.length,e.header));
+            return;
+        }
+        _h("#show",hex_dump(f.data,0,f.data.length));
     }
-    _h("#show",hex_dump(f.data,0,f.data.length));
+    catch (err) {
+        console.log(err);
+        show_as("dat");
+    }
 }
 
 function show_as(e)
@@ -3261,7 +3363,7 @@ function load_data(name,a)
             name = name.substr(0,i);
         }
         f.name83 = name.substr(0,8);
-        while (f.name83 < 8)
+        while (f.name83.length < 8)
             f.name83 += ' ';
         f.name83 += ext83.toUpperCase().substr(0,3);
         _containers.unshift({name:f.name,ext:ext,data:a,files:[f],id:_container_id++});         // single file
@@ -3376,10 +3478,16 @@ function load()
             case 'h':
             case 'H':
                 toggle_hex();
-                break;  // open a file....
+                break;  // toggle hex display
         }
     };
     render_state(_containers);
+}
+
+function toggle(eid)
+{
+    var e = _q(eid);
+    e.style.display = e.style.display == "none" ? "block" : "none";
 }
 
 function ext_option(f)
@@ -3400,7 +3508,7 @@ function render_state(m)
 {
     var h;
     if (m.length == 0) {
-        h = `<h2 style="text-align:center;color:#AAA">Drag Files Here</h2>`;
+        h = `<div style="text-align:center;color:#AAA"><h2>Drag Files Here</h2><h2>or</h2></div>`;
 
         _h("#tabs","");
         _shown = null;
@@ -3479,11 +3587,10 @@ function render_file(f)
 <div style="display:flex;flex-direction:row">
 
 <nav style="min-width:352px; max-width:352px; margin-right:8px;" id="toc">
-<div id="menu_container" >
-    <h2 style="text-align:center;color:#AAA" onclick="_q('#fe').click()" >Drag Files Here</h2>
-</div>
-<p style="text-align:center;">
-    <a style="color:#AAA" href="https://github.com/rossumur/esp_8_bit">https://github.com/rossumur/esp_8_bit</a>
+<div id="menu_container" ></div>
+<p style="text-align:center;color:#AAA;font-weight:300">
+    <span class='open' onclick='_q("#fe").click()'>Open</span><br/>
+    <a href="https://github.com/rossumur/esp_8_bit">https://github.com/rossumur/esp_8_bit</a>
 </p>
 <input type="file" id="fe" multiple style="display:none">
 </nav>
