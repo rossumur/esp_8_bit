@@ -102,7 +102,7 @@ td {
 }
 .radio {
     cursor: pointer;
-    font-size: x-small;
+    font-size: small;
     height:16px;
     margin-left: 12px;
     margin-right: 12px;
@@ -115,7 +115,7 @@ td {
     border: 1px solid #CCC;
     padding-left: 12px;
     padding-right: 12px;
-    vertical-align: bottom;
+    vertical-align: top;
 }
 .hilite {
     background: #CCF;
@@ -166,6 +166,10 @@ td {
     border: solid 1px #F00;
 }
 
+.palette {
+    margin-left: 8px;
+    display: inline-block;
+}
 .dropdown {
   position: relative;
   display: inline-block;
@@ -319,7 +323,7 @@ function draw(ctx,s,x,y,fcanvas)
 }
 
 // generate a canvas containing atari font
-function get_font(src)
+function get_font(src,palette)
 {
     // map atascii to a line of font bits
     // https://www.atariarchives.org/mapping/appendix10.php
@@ -343,24 +347,40 @@ function get_font(src)
     var d = pix.data;
     var f = 0;
     var i = 0;
+    var ap = (p) => {
+        p = atari_palette_rgb[palette[p]];
+        d[i+0] = (p >> 16) & 0xFF;
+        d[i+1] = (p >> 8) & 0xFF;
+        d[i+2] = p & 0xFF;
+        d[i+3] = 0xFF;
+        i += 4;
+    }
     for (var y = 0; y < 8; y++) {
     	for (var c = 0; c < 256; c++)
     	{
     		var b = font_bits(c,y);
-    		for (var x = 0; x < 8; x++) {
-    			if (b & 0x80) {
-          			d[i+0] = 128;
-          			d[i+1] = 162;
-          			d[i+2] = 255;
-          		} else {
-          			d[i+0] = 17;
-          			d[i+1] = 59;
-          			d[i+2] = 128;
-          		}
-          		d[i+3] = 0xFF;
-          		i += 4;
-          		b <<= 1;
-    		}
+            if (palette) {
+                for (var x = 0; x < 4; x++) {
+                    ap((b >> 6) & 3);
+                    ap((b >> 6) & 3);
+                    b <<= 2;
+                }
+            } else {
+        		for (var x = 0; x < 8; x++) {
+        			if (b & 0x80) {
+              			d[i+0] = 128;
+              			d[i+1] = 162;
+              			d[i+2] = 255;
+              		} else {
+              			d[i+0] = 17;
+              			d[i+1] = 59;
+              			d[i+2] = 128;
+              		}
+              		d[i+3] = 0xFF;
+              		i += 4;
+              		b <<= 1;
+        		}
+            }
     	}
     }
     ctx.putImageData(pix,0,0);
@@ -1060,7 +1080,7 @@ function radio_click(name,n)
 function radio_changed(name,v)
 {
     switch (name) {
-        case "layout": refresh(); break;
+        case "layout":refresh(); break;
     }
 }
 
@@ -1080,7 +1100,10 @@ function check_click(name,n)
 function check_changed(name,v)
 {
     switch (name) {
-        case "indent": refresh(); break;
+        case "indent":
+        case "multicolor":
+            refresh();
+            break;
     }
 }
 
@@ -1092,13 +1115,13 @@ function resize_parent(e,sx,sy)
     e.parentNode.style.height = e.height*sy + "px";
 }
 
-function show_ataritext(f,lst,font)
+function show_ataritext(f,lst,font,palette)
 {
     render_file(f);
 
     var fcanvas;
     if (font)
-        fcanvas = get_font(font);
+        fcanvas = get_font(font,palette);
 
     var layout = _radios["layout"].value;
     var cols = layout < 2 ? 40:80;
@@ -1126,7 +1149,8 @@ function show_ataritext(f,lst,font)
     c.height = wrap.length*8+16;
     var ctx = c.getContext('2d');
     ctx.webkitImageSmoothingEnabled = false;
-    ctx.fillStyle = "rgba(17,59,128,1)";
+    var bg = atari_palette_rgb[palette ? palette[0] : 128+20];
+    ctx.fillStyle = '#'+hex(bg,6); // "rgba(17,59,128,1)";
     ctx.fillRect(0, 0, c.width, c.height);
     for (var y = 0; y < wrap.length; y++)
         draw(ctx,wrap[y],margin,y+1,fcanvas);
@@ -3004,6 +3028,9 @@ function show_img(f)
 // https://github.com/TheRobotFactory/EightBit-Atari-Fonts
 function show_fnt(f)
 {
+    var pal = _reload_palette ? [0,5,10,15] : _palette.slice();
+    var multicolor = _checks['multicolor'];
+
     function fnt(n,len) {
         var space = (n & 0x80) ? String.fromCharCode(128+32) : ' ';
         var s = space;
@@ -3054,7 +3081,7 @@ function show_fnt(f)
     s.forEach(line => t.push(' ' + line));
     t.push("");
 
-    show_ataritext(f,t,f.data);
+    show_ataritext(f,t,f.data,multicolor?_palette:null);
 }
 
 var _exts = {
@@ -3628,12 +3655,12 @@ function ext_option(f)
 function finfo(f)
 {
     var t = _exts[f.ext] ? _exts[f.ext].name : "'" + f.ext + "' file";
-    return `<b>${f.name}</b><br/>${t} (${f.data.length} bytes)`;
+    return `<b>${f.name}</b><div style="font-size:small">${t} (${f.data.length} bytes)</div>`;
 }
 
 function redraw_palette()
 {
-    _h("#palette",palette(_palette));
+    _h(".palette",palette(_palette));
 }
 
 function pick_click(c,i)
@@ -3727,28 +3754,28 @@ function render_file(f)
 {
     var txt = _exts[f.ext] ? _exts[f.ext].is_txt : false;
     var img = _exts[f.ext] ? _exts[f.ext].is_img : false;
-    var controls = '';
+    var controls = `<div class='radio'>`;
     var buttons = '';
 
     if (txt) {
-        controls += 
-        `<div class='radio' style="float:right">
-            ${check_init('indent','Indent')}
-            ${radio_init('layout',['38','40','80','Wide'])}
-        </div>`
+        controls += `
+            ${f.ext == 'bas' ? check_init('indent','Indent') : ""}
+            ${f.ext == 'fnt' ? check_init('multicolor','Multicolor') : ""}
+            ${radio_init('layout',['38','40','80','Wide'])}`;
         buttons += `<button onclick="save(1)">Save As LST</button>`;
     }
-    if (img && is_palettable(f.ext)) {
-        controls += `<div id="palette">${palette(_palette)}</div>`;
-    }
+    if ((f.ext == 'fnt') || (img && is_palettable(f.ext)))
+        controls += `<div class="palette" style="display:inline-block">${palette(_palette)}</div>`;
+
     buttons += `<button onclick="save(0)">Download</button>`;
+    controls += `</div>`;
 
     _h("#tabs",
         `<div class='info'>
             <div style='overflow: auto'>
                 <b>${f.name}</b><div style='display:inline-block;float:right'>${buttons}</div>
             </div>
-            <div>
+            <div style="font-size:small">
                 ${ext_option(f)} ${f.data.length} bytes
                 <div style='display:inline-block;float:right'>${controls}</div>
             </div>
