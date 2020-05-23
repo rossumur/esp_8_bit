@@ -164,7 +164,6 @@ td {
     border: solid 1px #F00;
 }
 </style>
-
 <script id="hdr" type="text/template">
 	<b>{{name}}</b> {{size}} {{sector_size}}
 	<hr/>
@@ -1380,7 +1379,7 @@ var _basic_commands = [
     "ELSE ","ENDIF ","BPUT ","BGET ","FILLTO ","DO ","LOOP ","EXIT ",
     "DIR ","LOCK ","UNLOCK ","RENAME ","DELETE ","PAUSE ","TIME$= ","PROC ",
     "EXEC ","ENDPROC ","FCOLOR ","*L ",
-    "------------------------------" + String.fromCharCode(0x9B),
+    "------------------------------",
     "RENUM ","DEL ","DUMP ",
     "TRACE ","TEXT ","BLOAD ","BRUN ","GO# ","# ", "*B ","PAINT ",
     "CLS ","DSOUND ","CIRCLE ","%PUT ","%GET "
@@ -1401,6 +1400,13 @@ var _basic_operators = [
 ];
 
 // convert a basic file to a LST
+var _basic_indent = 0;
+function toggle_indent()
+{
+    _basic_indent ^= 1;
+    refresh();
+}
+
 function ataribasic(a,i,len)
 {
 	var b = {
@@ -1545,6 +1551,7 @@ function ataribasic(a,i,len)
     var turbo = false;
 
 	var listing = [];
+    var indent = 0;
 	for (var j = tokens_begin; j < tokens_end;) {
 		var s = {tok:[]};
 		s.lineno = le16(a,j);
@@ -1554,6 +1561,16 @@ function ataribasic(a,i,len)
             break; // stmcur
 
 		var line = s.lineno + " ";
+
+        if (indent && _basic_indent) {
+			var cmd = a[j+4];
+            // Check if indent needs to decreased *before* the first command:
+            //              NEXT           UNTIL          WEND           LOOP           ENDPROC        ENDIF     ELSE
+            if (cmd == 0x09 || cmd == 0x3D || cmd == 0x3F || cmd == 0x46 || cmd == 0x51 || cmd == 0x41 || cmd == 0x40)
+                line = line + " ".repeat(2 * indent - 2);
+            else
+                line = line + " ".repeat(2 * indent);
+        }
 
 		// Parse statements
 		var k = 3;
@@ -1587,6 +1604,35 @@ function ataribasic(a,i,len)
 				line += txt;
 				k = end;
 			}
+
+            // Check indent:
+            //         FOR            REPEAT         WHILE          DO             PROC
+            if (cmd == 0x08 || cmd == 0x3C || cmd == 0x3E || cmd == 0x45 || cmd == 0x4F)
+                indent ++;
+            //              IF
+            else if (cmd == 0x07) {
+                // Verify if there is THEN
+                var got_then = false;
+                for(var l=k; l<end; l++)
+                {
+                    var op = a[j+l];
+                    if( op == 0x1B ) {
+                        got_then = true;
+                        break;
+                    }
+                    else if( !op )
+                        l++;
+                    else if( op == 0x0F )
+                        l+=a[j+l+1];
+                    else if( op == 0x0E || op == 0x0D )
+                        l+=6;
+                }
+                if (!got_then)
+                    indent ++;
+            }
+            //              NEXT           UNTIL          WEND           LOOP           ENDPROC        ENDIF
+            else if (cmd == 0x09 || cmd == 0x3D || cmd == 0x3F || cmd == 0x46 || cmd == 0x51 || cmd == 0x41)
+                indent = indent > 0 ? indent - 1 : 0;
 
 			while (k < end) {
 				op = a[j+k++];
@@ -2936,7 +2982,7 @@ var _exts = {
     "dat": {name:"Raw Data"},
 
     "--0": {name:"Languages"},
-    "bas": {name:"Atari Basic", is_txt:true },
+    "bas": {name:"Atari Basic/Turbo Basic XL", is_txt:true },
     "lst": {name:"Atari Basic Listing", is_txt:true },
     "asm": {name:"Assembly Listing", is_txt:true },
     "m65": {name:"MAC/65 Assembly Listing", is_txt:true },
@@ -3479,6 +3525,10 @@ function load()
             case 'H':
                 toggle_hex();
                 break;  // toggle hex display
+            case 'l':
+            case '_':
+                toggle_indent();
+                break;
         }
     };
     render_state(_containers);
@@ -3577,12 +3627,10 @@ function render_file(f)
 }
 
 </script>
-
-
 <body>
 <header>
 <h2>ATR Image Explorer</h2>
-<br/>
+<br />
 </header>
 <div style="display:flex;flex-direction:row">
 
