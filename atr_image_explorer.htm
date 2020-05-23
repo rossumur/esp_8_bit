@@ -77,7 +77,6 @@ td {
     min-height: 24px;
     padding: 8px;
     border-bottom: 1px solid #CCC;
-    overflow: hidden;
 }
 
 .close-icon
@@ -108,6 +107,9 @@ td {
     margin-left: 12px;
     margin-right: 12px;
     margin-top:4px;
+}
+.radio:last-child  {
+    margin-right: 0px;
 }
 .radio span {
     border: 1px solid #CCC;
@@ -163,25 +165,39 @@ td {
     color: #F00;
     border: solid 1px #F00;
 }
+
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+.dropdown-content {
+    display: none;
+    position: absolute;
+    top:16px;
+    background: #CCC;
+    min-width: 288px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 100;
+    margin: 0px;
+    padding: 0px;
+}
+
+.dropdown:hover .dropdown-content {
+  display: block;
+}
+
+.acolor {
+    display: inline-block;
+    min-width: 16px;
+    min-height: 16px;
+    border: solid 1px #CCC;
+    vertical-align: bottom;
+}
+.acolor:hover {
+    border: solid 1px #FFF;
+}
+
 </style>
-<script id="hdr" type="text/template">
-	<b>{{name}}</b> {{size}} {{sector_size}}
-	<hr/>
-	toc:<br/>{{toc}}<br/>
-</script>
-
-<script id="file" type="text/template">
-	<div class='file'><b onclick='show({{start}})'>{{name}}</b> ({{total}} sectors at {{start}})</div>
-</script>
-
-<script id="err" type="text/template">
-	error:<b>{{err}}</b>
-</script>
-
-<script id="pre" type="text/template">
-	<pre>{{pre}}</pre>
-</script>
-
 <script>
 var _ajax = function(m,u,c,d) {
 	var x = new XMLHttpRequest;
@@ -199,7 +215,12 @@ var _q = function(q) {
 };
 
 var _h = function(q,html) {
-    return _q(q).innerHTML = html;
+    var e = _q(q);
+    if (!e) {
+        console.log("_h can't find " + q);
+        return null;
+    }
+    return e.innerHTML = html;
 };
 
 var _txt = function(q) {
@@ -393,14 +414,14 @@ function atari2canvas(canvas,atari,width,height,aspect,brightness)
     var d = pix.data;
     var src = 0;
     var i = 0;
-   
+    var pin = (p) => Math.min(0xFF,(p & 0xFF)*brightness);
     for (var y = 0; y < height; y++) {
         for (var x = 0; x < width; x++) {
             var c = atari[src++];
             for (var j = 0; j < aspect; j++) {
-                d[i+0] = ((c >> 16) & 0xFF)*brightness;
-                d[i+1] = ((c >> 8) & 0xFF)*brightness;
-                d[i+2] = (c & 0xFF)*brightness;
+                d[i+0] = pin(c >> 16);
+                d[i+1] = pin(c >> 8);
+                d[i+2] = pin(c);
                 d[i+3] = 0xFF;
                 i += 4;
             }
@@ -534,6 +555,7 @@ function unpack_rip(data,data_len,unpacked_data,unpacked_len)
     for (unpacked_offset = 0; unpacked_offset < unpacked_len; ) {
         switch (get_bit(stream)) {
         case -1:
+            console.log(`rip truncation: got ${unpacked_offset} of ${unpacked_len}`);
             return 0;
         case 0:
             unpacked_data[unpacked_offset++] = get_code(stream,literal_tree);
@@ -564,6 +586,11 @@ function rip(d)
     var txt_len = d[17];
     var pal_len = d[20 + txt_len];
     var dst;
+    var txt = '';
+
+    for (var i = 0; i < txt_len; i++)
+        txt += String.fromCharCode(d[24+i]);
+    console.log(`rip mode:${mode}, rowbytes:${d[13]}, height:${d[15]} txt:${txt}`);
 
     if (d[9] == 0) {
         dst = d.slice(hdr_len,d.length);
@@ -601,10 +628,18 @@ function rip(d)
     }
 }
 
+var _palette = [0,5,10,15];
+var _reload_palette = 1;
+var _palettable = ["gr7","gr8","gr10","mic","mcp","inp","cin","pic","scr"];
+function is_palettable(ext)
+{
+    return _palettable.indexOf(ext) != -1;
+}
+
 function render_image(canvas,f)
 {
-    var pal0 = [0,5,10,15,0,0,0,0,0];
-    var pal1 = [0,5,10,15,0,0,0,0,0];
+    var pal0 = _reload_palette ? [0,5,10,15] : _palette.slice();
+    var pal1 = _reload_palette ? [0,5,10,15] : _palette.slice();
     var hip =  [0,0,2,4,6,8,10,12,14, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xE0];
     var multihip_pal = null;
 
@@ -646,10 +681,16 @@ function render_image(canvas,f)
         }
     }
 
-    function set_pal(offset,len)
+    function set_pal(p,offset,len)
     {
-        for (var i = 0; i < len; i++)
-            pal0[i] = pal1[i] = data[offset++];
+        if (_reload_palette) {
+            pal0.length = len;
+            pal1.length = len;
+            for (var i = 0; i < len; i++)
+                pal0[i] = pal1[i] = p[offset++];
+            _palette = pal0.slice();
+            redraw_palette();
+        }
     }
 
     function avg(p0,p1)
@@ -670,15 +711,15 @@ function render_image(canvas,f)
         case 7684:
         case 9604:
         case 16004: // Interpainter
-            set_pal(data.length-4,4);
+            set_pal(data,data.length-4,4);
             break;
 
         case 7682:
-            set_pal(data.length-2,2);
+            set_pal(data,data.length-2,2);
             break;
 
         case 7689:
-            set_pal(data.length-9,9);
+            set_pal(data,data.length-9,9);
             break;
     }
 
@@ -694,7 +735,7 @@ function render_image(canvas,f)
             width = 320;
             gr = 8;
             if (data.length == 7680)
-                pal0[1] = pal1[1] = 0x0F;
+                set_pal([0,0xF],0,2);
             break;
 
         case "gr9":
@@ -721,8 +762,17 @@ function render_image(canvas,f)
             gr = 32;
             break;
 
+        case "mcp":
+            height = data.length == 16008 ? 200:100;
+            for (var i = 0; i < 4; i++) {
+                pal0[i] = data[height*80+((i-1)&3)];
+                pal1[i] = data[height*80+4+((i-1)&3)];
+            }
+            offset = height*40;
+            gr = 39;
+            break;
+
         case "inp":
-            width = 160;
             height = 200;
             offset = height*40;
             gr = 37;
@@ -748,6 +798,7 @@ function render_image(canvas,f)
         case "ist":
             height = 200;
             src = 16;
+            offset = 0x2000;
             gr = 35;
             break;
 
@@ -786,16 +837,18 @@ function render_image(canvas,f)
 
         case "rip_hip":
         case "rip_multirip":
-            gr = 36;
             height = data.length/80;
             offset = height*40;
+            gr = 36;
             break;
 
         case "rip_mode_14":
-            gr = 7;
             height = 192;
-            for (var i = 0; i < 4; i++)
+            for (var i = 0; i < 4; i++) {
                 pal0[i] = pal1[i] = hip[4+(i == 0 ? 4:i-1)] & 0xFE;
+                set_pal(pal0,0,4);
+            }
+            gr = 7;
             break;
 
         case "rip_mode_16":
@@ -817,10 +870,10 @@ function render_image(canvas,f)
         var pal = (y & 1) ? pal1 : pal0;
 
         if (gr == 35) { // ist palette
-            pal[0] = data[0x4000 + y];
-            pal[1] = data[0x40C8 + y];
-            pal[2] = data[0x4190 + y];
-            pal[3] = data[0x4258 + y];
+            pal0[0] = pal1[0]= data[0x4000 + y];
+            pal0[1] = pal1[1]= data[0x40C8 + y];
+            pal0[2] = pal1[2]= data[0x4190 + y];
+            pal0[3] = pal1[3]= data[0x4258 + y];
         }
 
         if (multihip_pal)
@@ -835,7 +888,6 @@ function render_image(canvas,f)
             var b = data[src];
             switch (gr) {
                 case 7:
-                case 35:
                     for (var j = 0; j < 4; j++) {
                         var bb = (b >> 6) & 3;
                         buf[dst++] = ap[pal[bb]];
@@ -905,6 +957,7 @@ function render_image(canvas,f)
                     x += 4;
                     break;// hip
 
+                case 35: // ist
                 case 37: // rip_mode_16/inp
                     var b2 = data[src+offset];
                     var pal_0 = (y & 1) ? pal1 : pal0;
@@ -912,6 +965,18 @@ function render_image(canvas,f)
                     for (var j = 0; j < 4; j++) {
                         var p0 = pal_1[(b2 >> 6) & 3];
                         var p1 = pal_0[(b >> 6) & 3];
+                        buf[dst++] = avg(p0,p1);
+                        b <<= 2;
+                        b2 <<= 2;
+                    }
+                    x += 4;
+                    break;
+
+                case 39: // mcp
+                    var b2 = data[src+offset];
+                    for (var j = 0; j < 4; j++) {
+                        var p0 = pal0[(b >> 6) & 3];
+                        var p1 = pal1[(b2 >> 6) & 3];
                         buf[dst++] = avg(p0,p1);
                         b <<= 2;
                         b2 <<= 2;
@@ -949,7 +1014,10 @@ function render_image(canvas,f)
     var brightness = 1;
     switch (ext) {
         case "rip_mode_16": brightness = 3; break;    // rip_mode_16,raw is dark, boost it please
-        case "raw": brightness = 2; break;
+        case "raw":
+        case "mcp":
+            brightness = 2;
+            break;
     }
     atari2canvas(canvas,buf,width,height,320/width,brightness);
     return [320/canvas.width*2,192/canvas.height*2];
@@ -966,24 +1034,23 @@ function draw_line(id,txt)
     resize_parent(c,2);
 }
 
-// Simple radio buttons
+// Simple radio and check buttons
 var _radios = {};
+var _checks = {};
 function radio_init(name,values,value)
 {
     var cur = _radios[name] ? _radios[name].value : 0;
     value = value || cur;
     var s = '';
     for (var i = 0; i < values.length; i++)
-        s += `<span ${i == value ? "class='hilite'" : ""}>${values[i]}</span>`;
+        s += `<span onclick="radio_click('${name}',${i})" ${i == value ? "class='hilite'" : ""}>${values[i]}</span>`;
     _radios[name] = {values:values,value:value};
     return s;
 }
 
-function radio_click(name,e)
+function radio_click(name,n)
 {
     var v = _radios[name];
-    var t = e.target.innerText;
-    var n = v.values.indexOf(t);
     if (n != -1 && n != v.value) {
         v.value = n;
         radio_changed(name,n);
@@ -994,6 +1061,26 @@ function radio_changed(name,v)
 {
     switch (name) {
         case "layout": refresh(); break;
+    }
+}
+
+function check_init(name,dname)
+{
+    _checks[name] = _checks[name] || 0;
+    var cur = _checks[name] ? _checks[name] : 0;
+    return `<span onclick="check_click('${name}')" ${cur ? "class='hilite'" : ""}>${dname}</span>`;
+}
+
+function check_click(name,n)
+{
+    _checks[name] ^= 1;
+    check_changed(name,_checks[name]);
+}
+
+function check_changed(name,v)
+{
+    switch (name) {
+        case "indent": refresh(); break;
     }
 }
 
@@ -1399,16 +1486,9 @@ var _basic_operators = [
     "TRUNC","%0","%1","%2","%3","GO# ","UINSTR","ERR","ERL"
 ];
 
-// convert a basic file to a LST
-var _basic_indent = 0;
-function toggle_indent()
-{
-    _basic_indent ^= 1;
-    refresh();
-}
-
 function ataribasic(a,i,len)
 {
+    var indenting = _checks['indent'];
 	var b = {
 		lomem: le16(a,i+0),   // should be zero
 		vnt: le16(a,i+2),     // start of variable name table
@@ -1562,7 +1642,7 @@ function ataribasic(a,i,len)
 
 		var line = s.lineno + " ";
 
-        if (indent && _basic_indent) {
+        if (indent) {
 			var cmd = a[j+4];
             // Check if indent needs to decreased *before* the first command:
             //              NEXT           UNTIL          WEND           LOOP           ENDPROC        ENDIF     ELSE
@@ -1608,7 +1688,7 @@ function ataribasic(a,i,len)
             // Check indent:
             //         FOR            REPEAT         WHILE          DO             PROC
             if (cmd == 0x08 || cmd == 0x3C || cmd == 0x3E || cmd == 0x45 || cmd == 0x4F)
-                indent ++;
+                indent += indenting;
             //              IF
             else if (cmd == 0x07) {
                 // Verify if there is THEN
@@ -1623,12 +1703,12 @@ function ataribasic(a,i,len)
                     else if( !op )
                         l++;
                     else if( op == 0x0F )
-                        l+=a[j+l+1];
+                        l+=a[j+l+1] + 1;
                     else if( op == 0x0E || op == 0x0D )
                         l+=6;
                 }
                 if (!got_then)
-                    indent ++;
+                    indent += indenting;
             }
             //              NEXT           UNTIL          WEND           LOOP           ENDPROC        ENDIF
             else if (cmd == 0x09 || cmd == 0x3D || cmd == 0x3F || cmd == 0x46 || cmd == 0x51 || cmd == 0x41)
@@ -3001,6 +3081,7 @@ var _exts = {
     "g10": {name:"Graphics 10 Image", is_img:true },
 
     "mic": {name:"Micropainter Image", is_img:true },
+    "mcp": {name:"McPainter/Paradox Image", is_img:true },
     "apc": {name:"APAC 256 Color Image", is_img:true },
     "plm": {name:"Plasma 256 Color Image", is_img:true },
     "pzm": {name:"Pryzm Artist Image", is_img:true },
@@ -3525,10 +3606,6 @@ function load()
             case 'H':
                 toggle_hex();
                 break;  // toggle hex display
-            case 'l':
-            case '_':
-                toggle_indent();
-                break;
         }
     };
     render_state(_containers);
@@ -3548,10 +3625,46 @@ function ext_option(f)
     return s;
 }
 
-function finfo(f,option)
+function finfo(f)
 {
-    var t = option ? ext_option(f) : (_exts[f.ext] ? _exts[f.ext].name : "'" + f.ext + "' file");
+    var t = _exts[f.ext] ? _exts[f.ext].name : "'" + f.ext + "' file";
     return `<b>${f.name}</b><br/>${t} (${f.data.length} bytes)`;
+}
+
+function redraw_palette()
+{
+    _h("#palette",palette(_palette));
+}
+
+function pick_click(c,i)
+{
+    _palette[c] = i;
+    _reload_palette = 0;    // make sure our changes take
+    refresh();
+    redraw_palette();
+    _reload_palette = 1;
+}
+
+function palette(colors)
+{
+    var atari2css = (i) => '#'+hex(atari_palette_rgb[i],6);
+    function atari256(c) {
+        var s = [];
+        for (var i = 0; i < 256; i++)
+            s.push(`<div class='acolor' onclick='pick_click(${c},${i})' style='background:${atari2css(i)}'></div>`);
+        return s.join("");
+    }
+    var s = [];
+    for (var c = 0; c < colors.length; c++) {
+        s.push(
+            `<div class='dropdown'>
+                <div class='acolor' style='background:${atari2css(colors[c])}'>
+                    <div class='dropdown-content'>${atari256(c)}</div>
+                </div>
+            </div>`
+        );
+    }
+    return s.join("");
 }
 
 function render_state(m)
@@ -3559,7 +3672,6 @@ function render_state(m)
     var h;
     if (m.length == 0) {
         h = `<div style="text-align:center;color:#AAA"><h2>Drag Files Here</h2><h2>or</h2></div>`;
-
         _h("#tabs","");
         _shown = null;
     } else
@@ -3615,12 +3727,31 @@ function render_file(f)
 {
     var txt = _exts[f.ext] ? _exts[f.ext].is_txt : false;
     var img = _exts[f.ext] ? _exts[f.ext].is_img : false;
+    var controls = '';
+    var buttons = '';
+
+    if (txt) {
+        controls += 
+        `<div class='radio' style="float:right">
+            ${check_init('indent','Indent')}
+            ${radio_init('layout',['38','40','80','Wide'])}
+        </div>`
+        buttons += `<button onclick="save(1)">Save As LST</button>`;
+    }
+    if (img && is_palettable(f.ext)) {
+        controls += `<div id="palette">${palette(_palette)}</div>`;
+    }
+    buttons += `<button onclick="save(0)">Download</button>`;
+
     _h("#tabs",
         `<div class='info'>
-            ${finfo(f,1)}
-            ${txt ? `<button style="float:right;" onclick="save(1)">Save As LST</button>` : ""}
-            <button style="float:right;" onclick="save(0)">Download</button>
-            ${txt ? `<div class='radio' onclick="radio_click('layout',event)" style="float:right">${radio_init('layout',['38','40','80','Wide'])}</div>` : ""}
+            <div style='overflow: auto'>
+                <b>${f.name}</b><div style='display:inline-block;float:right'>${buttons}</div>
+            </div>
+            <div>
+                ${ext_option(f)} ${f.data.length} bytes
+                <div style='display:inline-block;float:right'>${controls}</div>
+            </div>
         </div>
         <div id="file">${(txt || img) ? `<div><canvas id="show"></canvas></div>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
     );
