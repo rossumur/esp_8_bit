@@ -74,9 +74,17 @@ td {
 }
 
 .info {
-    min-height: 24px;
+    min-height: 32px;
     padding: 8px;
     border-bottom: 1px solid #CCC;
+    font-size: small;
+}
+.infof {
+    min-height: 32px;
+    padding: 8px;
+    border-bottom: 1px solid #CCC;
+    font-size: small;
+    overflow: hidden;
 }
 
 .close-icon
@@ -1775,7 +1783,10 @@ function ataribasic(a,i,len)
                         var txt;
 						if (op & 0x80)
 							txt = b.variable_names[op&0x7F];
-                        else {
+                        else if (!op) {
+                            turbo = true;
+                            txt = b.variable_names[a[j+k++] ^ 0x80];    // thx dragonstomper
+                        } else {
                             if (op >= 85) {
                                 turbo = true;
                                 if (op >= 110)
@@ -2963,6 +2974,14 @@ function le32(a,i)
     return a[i] | ((a[i+1]) << 8) | ((a[i+2]) << 16) | ((a[i+3]) << 24);
 }
 
+function is_zero(d,i,len)
+{
+    while (len--)
+        if (d[i++])
+            return false;
+    return true;
+}
+
 function toAscii(a,i,len)
 {
 	var s = '';
@@ -3295,12 +3314,91 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
     return lines.join("\n");
 }
 
+
+// http://atari.kensclassics.org/dos.htm
+// http://www.atarimax.com/jindroush.atari.org/afmtatr.html
+class ATR {
+    constructor(d,name) {
+        this.d = d;
+        this.name = name;
+        this.size = (le16(d,2) << 4) + (d[6] << 16);
+        this.sector_size = le16(d,4);
+        this.sector_count = (this.size-128*3)/this.sector_size + 3;
+    }
+
+    sector_offset(n) {    // 1 based
+        n--;
+        if (n < 3)
+            return 16 + n*0x80;     // header is 16 bytes
+        return 16 + 3*0x80 + (n-3)*this.sector_size;
+    }
+
+    one_dir(n) {
+        var d = this.d;
+        var j = this.sector_offset(361 + (n >> 3)) + (n & 7)*16;
+        var dir = {
+            flags:d[j],
+            total:le16(d,j+1),
+            start:le16(d,j+3),
+            name83:toAscii(d,j+5,11),
+            name:toAscii(d,j+5,8).trim() + '.' + toAscii(d,j+13,3)
+        };
+        dir.valid = !is_zero(d,j,16) && (dir.total < this.sector_count) && (dir.start < this.sector_count) && (dir.flags & 0x40);
+        return dir;
+    }
+
+    get_dir() {
+        var dir = [];
+        var valid = false;
+        for (var n = 0; n < 64; n++)
+        {
+            dir[n] = this.one_dir(n);
+            valid = valid || (n < 8 && dir[n].valid);  // look for sneaky directory entries
+        }
+        if (!valid) {                                  // no valid entries in first dir sector
+            for (var n = 0; n < 8; n++)                // see if they are hiding in 369
+                dir[n] = this.one_dir(n+64);           // from Cribbage etc
+        }
+        for (var n = 0; n < 64; n++)
+            dir[n].number = n;
+        return dir;
+    }
+
+    read(f) {
+        var data = [];
+        var count = f.total;
+        var sector = f.start;
+        var d = this.d;
+        f.errors = 0;
+        while (count--) {
+            var i = this.sector_offset(sector);
+            var end = i + this.sector_size;
+            var len = d[end-1];
+            if (len > 125)
+                f.errors++;
+            var num = d[end-3] >> 2;
+            var next = ((d[end-3] & 0x3) << 8) | d[end-2];
+            if (num != f.number)
+                f.errors++;
+            for (var k = 0; k < len; k++)
+                data.push(d[i + k]);
+            if (next == 0) {
+                if (count)
+                    f.errors++;
+                break;  // EOF?
+            }
+            sector = next;
+        }
+        return new Uint8Array(data);
+    }
+}
+
 // dump atr raw data
 function show_atr(f)
 {
     var atr = f.atr;
+    var d = atr.d;
     var txt = [];
-    var d = atr.data;
 
     function pad_hex(n)
     {
@@ -3324,25 +3422,14 @@ function show_atr(f)
         // $714 boot continues here...
     };
 
-    function sector_offset(n)
-    {
-        return (n < 3) ? 16+n*0x80 : 16+3*0x80 + (n-3)*atr.sector_size;
-    }
-
-
     function available(n)
     {
         return d[vtoc + 10 + (n >> 3)] & (0x80 >> (n & 3));
     }
 
-    /*
-10 to 99    Bitmap for sectors 0 to 719. A bit value of 0 means in use, a value of 1 means the sector is free. Sector 0 doesn't exist. Sectors 1 to 3 are reserved for booting the disk, sector 360 is the VTOC, and sectors 361 to 368 are the directory sectors. Sector 720 is unused because sector 0 is used in the map, with 90 bytes there is only enough bits to map sectors 0 through 719. The number of available sectors can be calcualted 721-1-3-1-8-1=707 bytes. (721 bits are used since we started counting at 0.)
-100-127 Unused. These should all be set to 0 so the sectors are marked as used and therefore unavailable. Note: Mydos uses the first bit of byte 100 to allow sector 720 to used for a total of 708 free sectors.
-    */
-
     // Check validity of TOC
     var sc = (atr.size - 3*128)/atr.sector_size + 3;
-    var vtoc = sector_offset(360-1);
+    var vtoc = atr.sector_offset(360);
     var valid = d[vtoc] == 2;
     var total = le16(d,vtoc+1);
     var unused = le16(d,vtoc+3);
@@ -3358,7 +3445,7 @@ function show_atr(f)
             valid = valid && d[vtoc+i] == 0;
     } else {
         density = "1050 Double (Enhanced) Density";
-        vtoc2 = sector_offset(1024-1);
+        vtoc2 = atr.sector_offset(1024);
         if (valid)
             unused += le16(d,vtoc2+122);
     }
@@ -3371,41 +3458,67 @@ function show_atr(f)
     txt.push("; Jump to <a href='#DIR'>Directory</a>");
     txt.push("");
 
-    // Show boot sectors
+    // Show boot sectors, disassemble them
     txt.push("; boot record");
     var k = Object.keys(_br);
     for (var i = 0; i < k.length; i++)
         txt.push("; " + pad_hex(_br[k[i]]) + " " + k[i]);
     txt.push("");
-    var size = sector_offset(_br.BRCNT);    // 0 based
+    var size = atr.sector_offset(_br.BRCNT+1);    // 0 based
     var boot = d.slice(16,size);
     var cont = _br.BCONT - _br.BLDADDR;
     cont = (cont < 0 || cont >= boot.length) ? _br.BLDADDR : _br.BCONT;
     txt.push(xex_dump("boot",boot,0,boot.length,0,_br.BLDADDR,cont));
 
+    // Scan files/sectors
+    // TODO: Broken links, deleted files
+    var dirs = atr.get_dir(i);
+    var sectors = [];
+    for (var i = 0; i < 64; i++) {
+        var dir = dirs[i];
+        if (dir.valid) {
+            var sector = dir.start;
+            for (var k = 0; k < dir.total; k++) {
+                var end = atr.sector_offset(sector) + atr.sector_size;
+                var len = d[end-1];
+                var num = d[end-3] >> 2;
+                var next = ((d[end-3] & 0x3) << 8) | (d[end-2]);
+                sectors[sector] = {len:len,num:num,next:next,offset:k};
+                if (next == 0)
+                    break;  // EOF?
+                sector = next;
+            }
+        }
+    }
+
     var n = 0;
     for (;;)
     {
         var size = n < 3 ? 128 : atr.sector_size;
-        var offset = sector_offset(n);
+        var offset = atr.sector_offset(n+1);
         if (offset >= (atr.size+16))
             break;
-        var zero = 1;
-        for (var i = 0; i < size; i++) {
-            if (d[i+offset]) {
-                zero = 0;
-                break;
-            }
-        }
+        var zero = is_zero(d,offset,size);
+
         switch (++n) {
             case 360: txt.push("; <span id='VTOC'>Volume Table of Contents <a href='#BOOT'>(back)</a></span>"); break;
             case 361: txt.push("; <span id='DIR'>Directory <a href='#BOOT'>(back)</a></span>"); break;
             case 1024: txt.push("; <span id='VTOC2'>Volume Table of Contents 2<a href='#BOOT'>(back)</a></span>"); break;
         }
-        txt.push("; Sector " + n + (zero ? " (" + size + " zeros)":""));
+
+        var s = sectors[n];
+        var sstr = '';
+        if (s) {
+            var dir = dirs[s.num];
+            if (dir)
+                sstr = ` (${dir.name} ${s.offset} of ${dir.total})`;
+        }
+        txt.push("; Sector " + n + (zero ? " (" + size + " zeros)":"") + sstr);
+
         if (!zero)
             txt.push(hex_dump(d,offset,size,4));
         txt.push("");
+
         if (n == _br.BRCNT) {
             txt.push("; ===================================================");
             txt.push("; End of boot sectors");
@@ -3505,9 +3618,7 @@ function close_container(id)
 
 function load_data(name,a)
 {
-	// http://www.atarimax.com/jindroush.atari.org/afmtatr.html
     var ext = get_ext(name,a);
-
 	if (ext != "atr") {        // not an atr file
         var f = {name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7};
         var i = name.lastIndexOf(".");
@@ -3522,87 +3633,25 @@ function load_data(name,a)
         f.name83 += ext83.toUpperCase().substr(0,3);
         _containers.unshift({name:f.name,ext:ext,data:a,files:[f],id:_container_id++});         // single file
 	} else {
-        // zero based sector offsets
-        function sector_offset(n)
-        {
-            if (n < 3)
-                return 16 + n*0x80;     // header is 16 bytes
-            return 16 + 3*0x80 + (n-3)*atr.sector_size;
-        }
-
-        function file_read(f)
-        {
-            var data = [];
-            var ss = atr.sector_size;
-            var count = f.total;
-            var sector = f.start;
-            var a = atr.data;
-            while (count--) {
-                var i = sector_offset(sector);
-                var len = a[i+(ss-1)];
-                var num = a[i+(ss-3)] >> 2;
-                if (f.number == -1)
-                    f.number  = num;
-                else {
-                    if (num != f.number)
-                        return null;
-                }
-                for (var k = 0; k < len; k++)
-                    data.push(a[i + k]);
-                var next = ((a[i+(ss-3)] & 0x3) << 8) | (a[i+(ss-2)]);
-                if (next == 0)
-                    break;  // EOF?
-                sector = next-1;
-            }
-            return new Uint8Array(data);
-        }
-
-
-        var atr = {data:a,name:name};
-    	atr.size = le16(a,2) << 4;
-    	atr.sector_size = le16(a,4);
-    	atr.size += a[6] << 16;
-        var sector_count = (atr.size-128*3)/atr.sector_size + 3;
-
-    	//	dump contents
-    	//	http://atari.kensclassics.org/dos.htm
+        var atr = new ATR(a,name);
+        var dir = atr.get_dir();
         var files = [];
-        var num = 0;
-    	for (var s = 360; s < 368; s++) {
-    		var i = sector_offset(s);
-    		for (var e = 0; e < atr.sector_size/16; e++) {
-                var non_zero = 0;
-                for (var j = 0; j < 16; j++)
-                    if (a[i+j])
-                        non_zero++;
-                if (non_zero == 0)
-                    continue;
-
-    			var f = {flags:a[i],total:le16(a,i+1),start:le16(a,i+3)-1};
-                f.valid = (f.total < sector_count) && (f.start < sector_count);
-                //if (f.flags & 0x40) {
-                if (f.valid) {
-                    var aext = toAscii(a,i+13,3).trim();
-                    f.name = toAscii(a,i+5,8).trim();
-                    if (aext.length)
-                        f.name += "." + aext;
-                    f.name83 = toAscii(a,i+5,11).trim();
-                    f.number = -1;
-                    f.data = file_read(f);
-                    if (f.data) {
-                        f.id = _id++;
-                        f.ext = get_ext(f.name,f.data);
-                        files.push(f);
-                    } else {
-                        console.log(f.name + " failed to read?");
-                    }
-    			}
-    			i += 16;
-    		}
-    	}
+        dir.forEach(f => {
+            if (f.valid) {
+                var file = {name:f.name,name83:f.name83,id:_id++};
+                file.data = atr.read(f);
+                if (f.errors) {
+                    console.log("Error reading file " + f.name);
+                    console.log(f);
+                } else {
+                    file.ext = get_ext(file.name,file.data);
+                    files.push(file);
+                }
+            }
+        });
         if (files.length)
             files.push({name83:"",name:name,ext:"",data:[],id:_id++});  // spacer
-        files.push({name83:sector_count + " sectors",name:name,ext:"atr",data:a,id:_id++,atr:atr});
+        files.push({name83:atr.sector_count + " sectors",name:name,ext:"atr",data:a,id:_id++,atr:atr});
         _containers.unshift({name:name,length:a.length,data:a,ext:"atr",files:files,id:_container_id++});
     }
 }
@@ -3705,7 +3754,7 @@ function render_state(m)
         h = m.map(container => 
         `<div>
             <span class='close-icon' onclick="close_container(${container.id})"></span>
-            <div class='info'>${finfo(container)}</div>
+            <div class='infof'>${finfo(container)}</div>
             <ul id="menu">
             ${container.files.map(file => 
                 `<li onclick="show(${file.id})">
