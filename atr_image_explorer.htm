@@ -35,7 +35,9 @@ li:hover {
     background-color: yellow;
     filter: brightness(200%);
 }
-
+li .recovered {
+    filter: brightness(75%);
+}
 h1, h2, h3, h4, h5, h6 {
 	font-weight: 300;
 }
@@ -331,7 +333,7 @@ function draw(ctx,s,x,y,fcanvas)
 }
 
 // generate a canvas containing atari font
-function get_font(src,palette)
+function get_font(src,palette,one_bit)
 {
     // map atascii to a line of font bits
     // https://www.atariarchives.org/mapping/appendix10.php
@@ -363,31 +365,45 @@ function get_font(src,palette)
         d[i+3] = 0xFF;
         i += 4;
     }
+    if (!palette) {
+        palette = [128+20,128+30];
+        one_bit = true;
+    }
+    var bg = atari_palette_rgb[128+20];
     for (var y = 0; y < 8; y++) {
     	for (var c = 0; c < 256; c++)
     	{
     		var b = font_bits(c,y);
             if (palette) {
-                for (var x = 0; x < 4; x++) {
-                    ap((b >> 6) & 3);
-                    ap((b >> 6) & 3);
-                    b <<= 2;
+                if (one_bit) {
+                    for (var x = 0; x < 8; x++) {
+                        ap((b >> 7)&1);
+                        b <<= 1;
+                    }
+                } else {
+                    for (var x = 0; x < 4; x++) {
+                        ap((b >> 6) & 3);
+                        ap((b >> 6) & 3);
+                        b <<= 2;
+                    }
                 }
             } else {
+                /*
         		for (var x = 0; x < 8; x++) {
         			if (b & 0x80) {
               			d[i+0] = 128;
               			d[i+1] = 162;
               			d[i+2] = 255;
               		} else {
-              			d[i+0] = 17;
-              			d[i+1] = 59;
-              			d[i+2] = 128;
+              			d[i+0] = (bg >> 16) & 0xFF;
+              			d[i+1] = (bg >> 8) & 0xFF;
+              			d[i+2] = (bg >> 0) & 0xFF;
               		}
               		d[i+3] = 0xFF;
               		i += 4;
               		b <<= 1;
         		}
+                */
             }
     	}
     }
@@ -1052,7 +1068,7 @@ function render_image(canvas,f)
 }
 
 // make an atari line of text to look like dir
-function draw_line(id,txt)
+function draw_line(id,txt,recovered)
 {
     var c = _q(id);
     c.width = txt.length*8;
@@ -1060,6 +1076,11 @@ function draw_line(id,txt)
     var ctx = c.getContext('2d');
     draw(ctx,txt,0,0);
     resize_parent(c,2);
+
+    if (recovered)
+        c.classList.add("recovered");
+    else
+        c.classList.remove("recovered");
 }
 
 // Simple radio and check buttons
@@ -2843,7 +2864,7 @@ function disassembleStep(pc,ram,asm,flags)
 
     asm.push({pc:pc,step:step,valid:valid,
         s:addr+'   '+ops+'   '+disas + (symbol ? " ; " + symbol[0] + " <i>" +  symbol[1] + "</i>": "")});
-    return (pc+step)&0xffff;
+    return (pc+step);
 }
 
 //  First disassembly pass
@@ -3104,7 +3125,9 @@ function show_fnt(f)
 }
 
 var _exts = {
-    "atr": {name:"ATR Disk Image"},
+    "atr": {name:"ATR Disk Image", is_disk:true},
+    "atx": {name:"ATX Disk Image", is_disk:true},
+    "pro": {name:"PRO Disk Image", is_disk:true},
     "dat": {name:"Raw Data"},
 
     "--0": {name:"Languages"},
@@ -3166,6 +3189,12 @@ function get_ext(name,a)
     if (sig == 0x296)
         return "atr";
 
+    if (ATX.is_atx(a))
+        return "atx";
+
+    if (PRO.is_pro(a))
+        return "pro";
+
     if (sig == 0xFFFF && (le16(a,2) < le16(a,4)))
         return "xex";
 
@@ -3223,35 +3252,48 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
     var flags = new Uint8Array(0x10000);
     var ram = new Uint8Array(0x10000);
     var entry_points = [];
-    if (entry) {
-        flags[entry] = 0x80;
+    if (entry >= 0xFFFF)
+        entry = 0;
+    if (org >= 0xFFFF)
+        org = 0;
+    if (entry)
         entry_points.push(entry);
-    }
 
     var header = le16(a,i) == 0xFFFF;   // 
     var lines = [];
     if (!header)
     {
-        org = org || 0x700;
         var sig = le32(a,i);
         if (sig == 0x54524143) // 'CART'
         {
-            org = 0x8000;
             i += 16;        // Cart file
             len -= 16;
         }
+        var rom_entry;
+        var rom_init;
+        if (len == 0x2000 || len == 0x4000) {
+            rom_entry = le16(a,i+len-6);
+            rom_init = le16(a,i+len-2);
+            if (len == 0x4000)
+                org = 0x8000;          // CART A+B
+            else
+                org =0xA000;           // CART B
+            entry_points.push(rom_entry);
+            entry_points.push(rom_init); 
+        }
+        org = org || 0x700;
 
         lines.push("; file " + name + " is " + len + " bytes");
+        if (rom_entry)
+            lines.push("; ROM at " + hex(org,4) + " init:" + hex(rom_init,4) + " entry: " + hex(rom_entry,4));
+        
         if (entry != org)
             entry_points.unshift(org);
-        entry_points.push(org+len);
+        for (var j = 0; j < entry_points.length-1; j++)
+            entry_points[j] = 0x80;
+
         var asms = [];
-        for (var j = 0; j < entry_points.length-1; j++) {  // try and get good starting points on entry
-            var ep = entry_points[j];
-            var ln = entry_points[j+1]-ep;
-            asms.push(disassemble(ep,a,i,ln,ram,flags));
-            i += ln;
-        }
+        asms.push(disassemble(org,a,i,len,ram,flags));
         asms.forEach(asm => disassemble2(asm,lines,ram,flags));
     } else {
         lines.push("; file " + name + " is " + len + " bytes");
@@ -3314,16 +3356,140 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
     return lines.join("\n");
 }
 
+class PRO {
+    static
+    is_pro(d)
+    {
+        var s = toAscii(d,2,2);
+        return s == "P2" || s == "P3";
+    }
+
+    static
+    to_atr(d) {
+        var sector_total = (d[0] << 8) | d[1];
+        var sector_count = (d[6] << 8) | d[7];
+        if (sector_count == 0)
+            sector_count = 720; // p2?
+        var sector_size = 128;
+        var size = sector_count*sector_size;
+
+        var atr = new Uint8Array(16+size);
+        atr[0] = 0x96;
+        atr[1] = 0x02;
+        atr[2] = (size >> 4) & 0xFF;
+        atr[3] = (size >> 4) >> 8;
+        atr[4] = sector_size & 0xFF;
+        atr[5] = sector_size >> 8;
+        atr[6] = (size >> 4) >> 16;
+        var dst = 16;
+        for (var i = 0; i < sector_count; i++) {
+            var src = 16+12+(12+sector_size)*i;
+            var n = sector_size;
+            while (n--)
+                atr[dst++] = d[src++];
+        }
+        return atr;
+    }
+}
+
+class ATX {
+    static
+    is_atx(d)
+    {
+        return toAscii(d,0,4) == "AT8X";
+    }
+
+    static
+    to_atr(d) {
+        if (!ATX.is_atx(d))
+            return null;
+        var atx = new ATX(d);
+        var atr = new Uint8Array(16+atx.size);
+        var sector_count = 720;
+
+        atr[0] = 0x96;
+        atr[1] = 0x02;
+        atr[2] = (atx.size >> 4) & 0xFF;
+        atr[3] = (atx.size >> 4) >> 8;
+        atr[4] = atx.sector_size & 0xFF;
+        atr[5] = atx.sector_size >> 8;
+        atr[6] = (atx.size >> 4) >> 16;
+        var dst = 16;
+        for (var i = 0; i < sector_count; i++)
+            dst = atx.readsector(i,atr,dst);
+        return atr;
+    }
+
+    constructor(d)
+    {
+        this.d = d;
+        this.sector_size = 128;
+        this.tracks = [];
+        var t = le32(d,28);
+        while (t > 0 && t < d.length) {
+            var track = {toff:[]};
+            track.offset = t;
+            track.size = le32(d,t);
+            track.type = le16(d,t+4);
+            track.tracknum = d[t+8];
+            track.sectorcount = le16(d,t+10);
+            track.headersize = le32(d,t+20);
+            track.sectorlistsize = le32(d,t+32) - 8;
+            for (var i = 0; i < 16; i++)
+                track.toff[i] = 0;
+            var sl = t+40;
+            for (var i = 0; i < track.sectorlistsize; i += 8) {
+                var dat = le32(d,sl+i+4);
+                if (dat && d[sl+i])
+                    track.toff[d[sl+i]-1] = dat;
+            }
+            this.tracks.push(track);
+            t += track.size;
+        }
+        this.size = 720*this.sector_size;
+    }
+
+    readsector(n,dst,dsti)
+    {
+        var d = this.d;
+        var track = n/18 | 0;
+        var ss = this.sector_size;
+        this.tracks.forEach(t => {
+            if (t.tracknum == track) {
+                var dat = t.toff[n % 18];
+                if (dat) {
+                    for (var i = 0; i < ss; i++)
+                        dst[dsti+i] = d[t.offset + dat++];
+                }
+            }
+        });
+        return dsti + this.sector_size;
+    }
+}
+
+/*
+0x01   File Opened for Output.
+0x02   File Created by Dos 2.
+0x10   Mydos DIR?
+0x20   File Locked (appears with '*' in directory).
+0x40   File In use (normal)
+0x80   File Deleted
+*/
 
 // http://atari.kensclassics.org/dos.htm
 // http://www.atarimax.com/jindroush.atari.org/afmtatr.html
 class ATR {
     constructor(d,name) {
+        if (ATX.is_atx(d))
+            d = ATX.to_atr(d);
+        else if (PRO.is_pro(d))
+            d = PRO.to_atr(d);
         this.d = d;
         this.name = name;
-        this.size = (le16(d,2) << 4) + (d[6] << 16);
+        this.size = (le16(d,2) + (d[6] << 16)) << 4;
         this.sector_size = le16(d,4);
         this.sector_count = (this.size-128*3)/this.sector_size + 3;
+        this.dir_sector = -1;
     }
 
     sector_offset(n) {    // 1 based
@@ -3333,35 +3499,180 @@ class ATR {
         return 16 + 3*0x80 + (n-3)*this.sector_size;
     }
 
-    one_dir(n) {
+    one_dir(n,sector) {
+        sector = sector || 361;
         var d = this.d;
-        var j = this.sector_offset(361 + (n >> 3)) + (n & 7)*16;
+        var j = this.sector_offset(sector + (n >> 3)) + (n & 7)*16;
         var dir = {
             flags:d[j],
             total:le16(d,j+1),
             start:le16(d,j+3),
             name83:toAscii(d,j+5,11),
-            name:toAscii(d,j+5,8).trim() + '.' + toAscii(d,j+13,3)
+            name:toAscii(d,j+5,8).trim()
         };
-        dir.valid = !is_zero(d,j,16) && (dir.total < this.sector_count) && (dir.start < this.sector_count) && (dir.flags & 0x40);
+        var ext = toAscii(d,j+13,3).trim();
+        if (ext.length)
+            dir.name += '.' + ext;
+
+        dir.valid = (dir.flags & 0x40) != 0 && !(dir.flags & 0x8C);
+        for (var i = 0; i < 11; i++)
+            dir.valid = dir.valid && (d[j+5+i] != 0);
+        dir.valid = dir.valid && (dir.total < this.sector_count) && (dir.start < this.sector_count);
+        dir.valid = dir.valid && dir.total && dir.start > 3;
+
+        // get all sectors associated with this entry
+        if (dir.valid) {
+            dir.sectors = [];
+            var sector = dir.start;
+            var num = -1;
+            for (var k = 0; k < dir.total; k++) {
+                var end = this.sector_offset(sector) + this.sector_size;
+                var len = d[end-1];
+                var next = ((d[end-3] & 0x03) << 8) | (d[end-2]);   // TODO: 10 bits?
+                if (num == -1)
+                    num = d[end-3] >> 2;
+                var good_len = next == 0 ? len <= (this.sector_size-3) : len == (this.sector_size-3);
+                if (next >= this.sector_count || (num != (d[end-3] >> 2)) || !good_len)
+                {
+                    dir.valid = false;
+                    break;
+                }
+                dir.sectors[sector] = {sector:sector,len:len,next:next,offset:k};
+                if (next == 0) {
+                    if (k != dir.total-1)
+                        dir.valid = false;
+                    break;  // EOF?
+                }
+                sector = next;
+            }
+            if (!dir.valid)
+                dir.sectors = [];
+        }
         return dir;
     }
 
-    get_dir() {
-        var dir = [];
-        var valid = false;
-        for (var n = 0; n < 64; n++)
-        {
-            dir[n] = this.one_dir(n);
-            valid = valid || (n < 8 && dir[n].valid);  // look for sneaky directory entries
+    // Search the entire disk for sneaky directory entries
+    get_dir_range(from,to)
+    {
+        var dirs = [];
+        for (var i = from; i < to; i++) {
+            for (var n = 0; n < 8; n++) {
+                var dir = this.one_dir(n,i);
+                if (dir.valid) {
+                    if (this.dir_sector == -1)
+                        this.dir_sector = i;
+                    dirs.push(dir);
+                }
+            }
         }
-        if (!valid) {                                  // no valid entries in first dir sector
-            for (var n = 0; n < 8; n++)                // see if they are hiding in 369
-                dir[n] = this.one_dir(n+64);           // from Cribbage etc
+        return dirs;
+    }
+
+    // Search the entire disk for sneaky directory entries
+    get_dir()
+    {
+        var dirs = this.get_dir_range(361,369);
+        if (dirs.length < 1 || (this.dir_sector != 361))
+            dirs = this.get_dir_range(4,this.sector_count); // try the whole disk
+        if (this.dir_sector == -1)
+            this.dir_sector = 361;  // didn't find one, use default
+        this.scan_files(dirs);      // try and find files that don't have a real directory entry
+        return dirs;
+    }
+
+    scan_files(dirs)
+    {
+        var d = this.d;
+        var sectors = [];
+
+        var used = [];
+        dirs.forEach(dir => dir.sectors.forEach(s => used[s] = dir));
+
+        var files = [];
+        for (var i = 4; i < this.sector_count; i++) {
+            var end = this.sector_offset(i) + this.sector_size;
+            var len = d[end-1];
+            var next = ((d[end-3] & 0x03) << 8) | (d[end-2]);   // TODO: 10 bits
+            if (len == (this.sector_size-3) || ((len <= (this.sector_size-3)) && next == 0))
+                sectors[i] = {sector:i,len:len,next:next,num:d[end-3] >> 2};
         }
-        for (var n = 0; n < 64; n++)
-            dir[n].number = n;
-        return dir;
+        sectors.forEach(s => {
+            var n = sectors[s.next];
+            if (n)
+                n.prev = s.sector;
+        });
+        sectors.forEach(s => {
+            if (!s.prev) {
+                s.total = 0;
+                s.bytes = 0;
+                s.used = 0;
+                s.error = 0;
+                s.sectors = [];
+                var n = s;
+                do {
+                    s.sectors.push(n);
+                    if (used[n.sector])
+                        s.used = used[n.sector];
+                    s.bytes += n.len;
+                    s.total++;
+                    if (s.num != n.num)
+                        s.error++;
+                    if (n.next == 0)
+                        break;
+                    var np = sectors[n.next];
+                    if ((n != s) && (!np || (np.prev != n.sector))) {
+                        s.error++;
+                        break;
+                    }
+                    n = np;
+                } while(n);
+                if (s.error == 0 && s.total > 1)
+                    files.push(s);
+            }
+        });
+
+        var _correlated = 0;
+        function match(s) {
+            for (var i = 0; i < dirs.length; i++)
+                if (dirs[i].start == s) {
+                    dirs[i].correlated = true;
+                    _correlated++;
+                    return dirs[i];
+                }
+            return null;
+        }
+
+        // now we have chains of files, recover those missing dir entries
+        var i = 0;
+        files.forEach(f => {
+            if (!match(f.sector)) {
+                var name = "FILE_" + hex(i++) + ".DAT";
+                var name83 = "FILE_" + hex(i++) + " DAT";
+
+                // Reconstruct stopmed dirs
+                if (this.dir_sector == 361) {
+                    var nom = this.one_dir(f.num);
+                    if (nom.flags & 0x40) {
+                        name83 = nom.name83;
+                        name = nom.name;
+                    }
+                }
+
+                if (f.used) {
+                    console.log(name + " also used by " + f.used.name);
+                } else {
+                    var dir = {sectors:[],valid:true,start:f.sector,total:f.total,name:name,name83:name83,flags:0x42,recovered:true};
+                    var offset = 0;
+                    do {
+                        dir.sectors[f.sector] = {sector:f.sector,len:f.len,next:f.next,offset:offset++};
+                        if (f.next == 0)
+                            break;
+                        f = sectors[f.next];
+                    } while(f);
+                    dirs.push(dir);
+                }
+            }
+        });
     }
 
     read(f) {
@@ -3374,12 +3685,9 @@ class ATR {
             var i = this.sector_offset(sector);
             var end = i + this.sector_size;
             var len = d[end-1];
-            if (len > 125)
+            if (len > (this.sector_size-3))
                 f.errors++;
-            var num = d[end-3] >> 2;
-            var next = ((d[end-3] & 0x3) << 8) | d[end-2];
-            if (num != f.number)
-                f.errors++;
+            var next = ((d[end-3] & 0x3) << 8) | d[end-2];  // TODO: 10 bits?
             for (var k = 0; k < len; k++)
                 data.push(d[i + k]);
             if (next == 0) {
@@ -3474,22 +3782,9 @@ function show_atr(f)
     // TODO: Broken links, deleted files
     var dirs = atr.get_dir(i);
     var sectors = [];
-    for (var i = 0; i < 64; i++) {
-        var dir = dirs[i];
-        if (dir.valid) {
-            var sector = dir.start;
-            for (var k = 0; k < dir.total; k++) {
-                var end = atr.sector_offset(sector) + atr.sector_size;
-                var len = d[end-1];
-                var num = d[end-3] >> 2;
-                var next = ((d[end-3] & 0x3) << 8) | (d[end-2]);
-                sectors[sector] = {len:len,num:num,next:next,offset:k};
-                if (next == 0)
-                    break;  // EOF?
-                sector = next;
-            }
-        }
-    }
+    dirs.forEach(dir => dir.sectors.forEach(s => {sectors[s.sector] = {dir:dir,sector:s}}));
+    console.log(dirs);
+    console.log(sectors);
 
     var n = 0;
     for (;;)
@@ -3502,17 +3797,12 @@ function show_atr(f)
 
         switch (++n) {
             case 360: txt.push("; <span id='VTOC'>Volume Table of Contents <a href='#BOOT'>(back)</a></span>"); break;
-            case 361: txt.push("; <span id='DIR'>Directory <a href='#BOOT'>(back)</a></span>"); break;
+            case atr.dir_sector: txt.push("; <span id='DIR'>Directory <a href='#BOOT'>(back)</a></span>"); break;
             case 1024: txt.push("; <span id='VTOC2'>Volume Table of Contents 2<a href='#BOOT'>(back)</a></span>"); break;
         }
 
         var s = sectors[n];
-        var sstr = '';
-        if (s) {
-            var dir = dirs[s.num];
-            if (dir)
-                sstr = ` (${dir.name} ${s.offset} of ${dir.total})`;
-        }
+        var sstr = s ? ` (${s.dir.name} ${s.sector.offset} of ${s.dir.total})` : '';
         txt.push("; Sector " + n + (zero ? " (" + size + " zeros)":"") + sstr);
 
         if (!zero)
@@ -3533,15 +3823,11 @@ function show_atr(f)
 function show(id)
 {
     try {
-            	var f = get_file(id);
+        var f = get_file(id);
         if (f.data.length == 0)
             return;
 
         _shown = f;
-        if (f.ext == "atr") {
-            show_atr(f);
-            return;
-        }
         if (f.ext == "bas") {
             show_bas(f);
             return;
@@ -3558,6 +3844,10 @@ function show(id)
         }
 
         var e = _exts[f.ext];
+        if (e && e.is_disk) {
+            show_atr(f);
+            return;
+        }
         if (e && e.is_img) {
             show_img(f);
             return;
@@ -3619,7 +3909,7 @@ function close_container(id)
 function load_data(name,a)
 {
     var ext = get_ext(name,a);
-	if (ext != "atr") {        // not an atr file
+	if ((ext != "atr") && (ext != "atx") && (ext != "pro")) {        // not an atr file
         var f = {name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7};
         var i = name.lastIndexOf(".");
         var ext83 = ext;
@@ -3638,21 +3928,20 @@ function load_data(name,a)
         var files = [];
         dir.forEach(f => {
             if (f.valid) {
-                var file = {name:f.name,name83:f.name83,id:_id++};
+                var file = {name:f.name,name83:f.name83,id:_id++,total:f.total,flags:f.flags,recovered:f.recovered};
                 file.data = atr.read(f);
                 if (f.errors) {
                     console.log("Error reading file " + f.name);
                     console.log(f);
-                } else {
-                    file.ext = get_ext(file.name,file.data);
-                    files.push(file);
                 }
+                file.ext = get_ext(file.name,file.data);
+                files.push(file);
             }
         });
         if (files.length)
             files.push({name83:"",name:name,ext:"",data:[],id:_id++});  // spacer
-        files.push({name83:atr.sector_count + " sectors",name:name,ext:"atr",data:a,id:_id++,atr:atr});
-        _containers.unshift({name:name,length:a.length,data:a,ext:"atr",files:files,id:_container_id++});
+        files.push({name83:atr.sector_count + " sectors",name:name,ext:ext,data:a,id:_id++,atr:atr});
+        _containers.unshift({name:name,length:a.length,data:a,ext:ext,files:files,id:_container_id++});
     }
 }
 
@@ -3784,7 +4073,7 @@ function render_state(m)
     }
 
     m.forEach(container => {
-        container.files.forEach(file => draw_line(`#canvas${file.id}`,info(file)));
+        container.files.forEach(file => draw_line(`#canvas${file.id}`,info(file),file.recovered));
     });
 
     // show supported file types
