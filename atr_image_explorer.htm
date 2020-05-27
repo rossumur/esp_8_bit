@@ -3,6 +3,12 @@
 <html>
 <title>ATR</title>
 <style>
+@font-face {
+    font-family: 'Atari';
+    src: url(data:application/font-woff;charset=utf-8;base64,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) format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
 
 body {
 	background-color:#F8F8F8;
@@ -190,7 +196,7 @@ td {
     top:16px;
     background: #CCC;
     min-width: 288px;
-    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
     z-index: 100;
     margin: 0px;
     padding: 0px;
@@ -210,6 +216,59 @@ td {
 .acolor:hover {
     border: solid 1px #FFF;
 }
+
+.atari {
+    font-family: 'Atari';
+    font-size:16px;
+    background: #153382;
+    color: #B5D3FF;
+    letter-spacing: -1px;
+}
+
+pre {
+    padding: 8px;
+    font-size: 10px;
+    line-height: 10px;
+}
+
+pre strong {
+    font-family: 'Atari';
+    font-size:8px;
+    background: #153382;
+    color: #B5D3FF;
+}
+
+.keyboard {
+    display: none;
+    position: absolute;
+    height: 274px;
+    width: 258px;
+    font-family: 'Atari';
+    font-size: 16px;
+    background: #153382;
+    color: #B5D3FF;
+    line-height: 16px;
+    z-index: 10;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
+}
+
+.keyboard span:hover {
+    filter: brightness(200%);
+}
+.keyboard_invert {
+    font-family:"Open Sans","Helvetica Neue",Helvetica;
+    text-align: center;
+    vertical-align: center;
+    color:#000;
+    font-size: x-small;
+    background: #F8F8F8;
+}
+.keyboard_invert:hover{
+    background: #CCF;
+}
+
 
 </style>
 <script>
@@ -296,18 +355,22 @@ function hex_line(addr,data,i,len,awidth)
 {
 	var s = [hex(addr,awidth || 6) + "   "];
 	var p = '';
-    var pad = 16-len;
+    var left = addr & 15;
+    var right = (16-((addr + len) & 15)) & 15;
+    if (left) {
+        p += `<span style='background:#CCC'>${' '.repeat(left-1)} </span>`;
+        s.push('   '.repeat(left));
+    }
 	while (len--) {
 		var j = data[i];
-		if (j >= 0x20 && j <= 0x7E)
-			p += escapestr(String.fromCharCode(j));
-		else
-			p += '.'
+        p += String.fromCharCode(j + 0xE000);
 		s.push(hex(data[i++],2) + " ");
 	}
-    while (pad--)
-        p = "   " + p;
-	return s.join('') + " " + p;
+    if (right) {
+        p += `<span style='background:#CCC'>${' '.repeat(right-1)} </span>`;
+        s.push('   '.repeat(right));
+    }
+	return s.join('') + "  <strong>" + p + "</strong>";
 }
 
 function hex_dump(a,i,len,awidth)
@@ -411,6 +474,49 @@ function get_font(src,palette,one_bit)
     return canvas;
 }
 
+//===================================================================================================
+//===================================================================================================
+// LBG
+
+var BITS = 5;
+var BITS_LEN = (1<<BITS)*(1<<BITS)*(1<<BITS);
+function rgb555(pix)
+{
+    var d = pix.data;
+    var rgb555 = new Uint32Array(BITS_LEN);
+    var i = 0;
+    for (var y = 0; y < pix.height; y++) {
+        for (var x = 0; x < pix.width; x++) {
+            var n = ((d[i]>>3)<<10) | ((d[i+1]>>3)<<5) | (d[i+2]>>3);
+            rgb555[n]++;
+            i += 4;
+        }
+    }
+    return rgb555;
+}
+
+function kmeans(pix)
+{
+    // collect info on colors used
+    var counts = rgb555(pix);
+    var used = new Uint32Array(BITS_LEN);
+    var j = 0;
+    for (var i = 0; i < BITS_LEN; i++) {
+        if (counts[i])
+            used[j++] = i;
+    }
+    used.length = j;
+    console.log(j + " used of " + pix.width*pix.height);
+
+    var centroids = [0x00000000,0x00414141,0x00898989,0x00EAEAEA].forEach(c => {
+
+    });
+}
+
+//===================================================================================================
+//===================================================================================================
+// Images
+
 var atari_palette_rgb = [
     0x00000000,0x000F0F0F,0x001B1B1B,0x00272727,0x00333333,0x00414141,0x004F4F4F,0x005E5E5E,
     0x00686868,0x00787878,0x00898989,0x009A9A9A,0x00ABABAB,0x00BFBFBF,0x00D3D3D3,0x00EAEAEA,
@@ -446,9 +552,159 @@ var atari_palette_rgb = [
     0x0076720B,0x0085821B,0x0097932D,0x00A8A43E,0x00B9B650,0x00CCC963,0x00E0DD77,0x00F7F48F,
 ];
 
+// 
+var _lfsr = 0xACE1;
+function lfsr()
+{
+    _lfsr ^= _lfsr >> 7;
+    _lfsr ^= _lfsr << 9;
+    _lfsr ^= _lfsr >> 13;
+    return _lfsr;
+}
+
+function dither_image(pix,f,pal)
+{
+    var ap = atari_palette_rgb;
+    var d = pix.data;
+
+    // expand palette
+    var rgb = new Uint8Array(pal.length*4);
+    for (var i = 0; i < pal.length; i++) {
+        var c = ap[pal[i]];
+        rgb[i*4+0] = c >> 16;
+        rgb[i*4+1] = c >> 8;
+        rgb[i*4+2] = c;
+    }
+
+    var errs = new Int16Array(3);
+    function get_index(src,p) {
+        var mind = -1;
+        var merr = 0xFFFFFF;
+        for (var i = 0; i < pal.length; i++) {
+            var err = 0;
+            for (var j = 0; j < 3; j++) {
+                var e = src[p+j]-rgb[i*4+j];
+                err += e*e;
+            }
+            if (err < merr) {
+                merr = err;
+                mind = i;
+            }
+        }
+        var scale = 6;
+        errs[0] = (src[p+0] - rgb[mind*4+0])/scale;   // save error in RGB
+        errs[1] = (src[p+1] - rgb[mind*4+1])/scale;
+        errs[2] = (src[p+2] - rgb[mind*4+2])/scale;
+        return pal[mind];    // closest index
+    }
+
+    var i = 0;
+    var dst = new Uint8Array(pix.width*pix.height);
+    var row = 0;
+    var buf = new Uint8Array(3);
+
+    function pin(n) {
+        if (n < 0) return 0;
+        if (n > 255) return 255;
+        return n;
+    }
+
+    function rnd()
+    {
+        var mask = 0x7F;
+        return (lfsr() & mask)-mask/2;
+    }
+    function noisy(i)
+    {
+        buf[0] = pin(d[i+0] + rnd());
+        buf[1] = pin(d[i+1] + rnd());
+        buf[2] = pin(d[i+2] + rnd());
+    }
+
+    function add_err(x,y) {
+        var i = (x + y*pix.width)*4;
+        d[i+0] = pin(d[i+0]+errs[0]);
+        d[i+1] = pin(d[i+1]+errs[1]);
+        d[i+2] = pin(d[i+2]+errs[2]);
+    }
+
+    var m = 0;
+    for (var y = 0; y < pix.height; y++) {
+        for (var x = 0; x < pix.width; x++) {
+            switch (m) {
+                case 0:
+                    dst[i++] = get_index(d,row+x*4);
+                    add_err(x+1,y+0);
+                    add_err(x+2,y+0);
+                    add_err(x-1,y+1);
+                    add_err(x+0,y+1);
+                    add_err(x+1,y+1);
+                    add_err(x+0,y+2);
+                    break;
+                case 1:
+                    noisy(row+x*4);
+                    dst[i++] = get_index(buf,0);
+                    break;
+            }
+        }
+        row += pix.width*4;
+    }
+    return dst;
+}
+
+function convert_image(canvas,f,pal) {
+    var width = 320;
+    var height = 192;
+
+    var img = f.img;
+    var src_width = img.width;
+    var src_height = img.height;
+    var dst_width,dst_height;
+    var ratio = img.width/img.height;
+    if (ratio > width/height)
+    {
+        dst_width = width;  
+        dst_height = width/ratio;    // wide
+    } else {
+        dst_height = height;
+        dst_width = height*ratio;    // tall
+    }
+
+    // 80,160 or 320 wide
+    switch (f.ext) {
+        case "gr7":
+            width /= 2;
+            dst_width /= 2;
+            break;
+        case "gr8":
+            pal = [0,15];
+            break;
+        case "gr9":
+            pal = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+        case "g10":
+            width /= 4;
+            dst_width /= 4;
+            break;
+    }
+
+
+    canvas.width = width;
+    canvas.height = height;
+    var ctx = canvas.getContext('2d');
+    ctx.fillRect(0,0,width,height);
+    ctx.drawImage(f.img,0,0,img.width,src_height,(width-dst_width)/2,(height-dst_height)/2,dst_width,dst_height);
+
+    var pix = ctx.getImageData(0,0,width,height);
+    kmeans(pix);
+    var indexed = dither_image(pix,f,pal);
+    var rgb = Uint32Array.from(indexed).map(i => atari_palette_rgb[i]);
+    rgb2canvas(canvas,rgb,width,height,1);
+    return [320/canvas.width*2,192/canvas.height*2];
+}
+
 // atari index color to canvas
 // may stretch horizontally to maintain aspect ratio
-function atari2canvas(canvas,atari,width,height,aspect,brightness)
+function rgb2canvas(canvas,atari,width,height,aspect,brightness)
 {
     brightness = brightness || 1;
     canvas.width = width*aspect;
@@ -674,7 +930,7 @@ function rip(d)
 
 var _palette = [0,5,10,15];
 var _reload_palette = 1;
-var _palettable = ["gr7","gr8","gr10","mic","mcp","inp","cin","pic","scr"];
+var _palettable = ["gr7","gr8","g10","mic","mcp","inp","cin","pic","scr"];
 function is_palettable(ext)
 {
     return _palettable.indexOf(ext) != -1;
@@ -682,10 +938,14 @@ function is_palettable(ext)
 
 function render_image(canvas,f)
 {
-    var pal0 = _reload_palette ? [0,5,10,15] : _palette.slice();
-    var pal1 = _reload_palette ? [0,5,10,15] : _palette.slice();
+    var def_palette = f.ext == "g10" ? [0,2,4,6,8,10,12,14,15] : [0,5,10,15];
+    var pal0 = _reload_palette ? def_palette.slice() : _palette.slice();
+    var pal1 = _reload_palette ? def_palette.slice() : _palette.slice();
     var hip =  [0,0,2,4,6,8,10,12,14, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xE0];
     var multihip_pal = null;
+
+    if (f.img)
+        return convert_image(canvas,f,pal0);
 
     var data = f.data;
     var ext = f.ext;
@@ -1063,9 +1323,13 @@ function render_image(canvas,f)
             brightness = 2;
             break;
     }
-    atari2canvas(canvas,buf,width,height,320/width,brightness);
+    rgb2canvas(canvas,buf,width,height,320/width,brightness);
     return [320/canvas.width*2,192/canvas.height*2];
 }
+
+//===================================================================================================
+//===================================================================================================
+// UI
 
 // make an atari line of text to look like dir
 function draw_line(id,txt,recovered)
@@ -1144,7 +1408,143 @@ function resize_parent(e,sx,sy)
     e.parentNode.style.height = e.height*sy + "px";
 }
 
-function show_ataritext(f,lst,font,palette)
+function atari2ascii(lst,escape)
+{
+    var r = [];
+    lst.forEach(src => {
+        var dst = '';
+        for (var i = 0; i < src.length; i++) {
+            var c = src.charCodeAt(i);
+            switch (c) {
+                case 0x7B: // { in ascii, spade in atari
+                case 0x7D: // } in ascii, upleft in atari
+                case 0x7E: // ~ in ascii, left triangle in atari
+                case 0x7F: // right triangle in atari
+                    c += 0xE000;
+                    break;
+                default:
+                    if (escape)
+                    {
+                        switch(c) {
+                            case '<':
+                            case '>':
+                            case '&':
+                                c += 0xE000;
+                                break;
+                        }
+                    }
+                    if (c < 0x20 || c > 0x7E)   // keep printing chars whole
+                        c += 0xE000;
+            }
+            dst += String.fromCharCode(c);
+        }
+        r.push(dst);
+    })
+    return r;
+}
+
+function ascii2atari(lst)
+{
+    var d = [];
+    lst.forEach(src => {
+        for (var i = 0; i < src.length; i++)
+            d.push(src.charCodeAt(i) & 0xFF);
+        d.push(0x9B);
+    });
+    return new Uint8Array(d);
+}
+
+function get_ataritext()
+{
+    return ascii2atari(_q("textarea").value.split("\n"));
+}
+
+function keyboard(txt)
+{
+    var e = _q("textarea");
+    if (!e)
+        return;
+
+    // same in ATASCII as ASCII
+    // will cause unescaping of <>& etc
+    function common_chars(s)
+    {
+        var dst = '';
+        for (var i = 0; i < s.length; i++) {
+            var c = s.charCodeAt(i);
+            if ((c & 0xFF) >= 0x20 && ((c & 0xFF) < 0x7B))
+                c &= 0xFF;
+            dst += String.fromCharCode(c);
+        }
+        return dst;
+    }
+
+    var invert = txt == "Invert Selection";
+    if (invert) {
+        var start = e.selectionStart;
+        var end = e.selectionEnd;
+        txt = e.value.substring(start, end);
+        var s = '';
+        for (var i = 0; i < txt.length; i++) {
+            var c = txt.charCodeAt(i);
+            s += String.fromCharCode(c < 0x20 ? c : (c ^ 0x80) | 0xE000);
+        }
+        txt = s;
+    }
+    txt = common_chars(txt);
+
+    // insert special character
+    if (document.selection) {
+        e.focus();
+        document.selection.createRange().text = txt;    // IE
+    } else if (e.selectionStart || e.selectionStart == '0') {
+        var start = e.selectionStart;
+        var end = e.selectionEnd;
+        e.value = e.value.substring(0, start) + txt + e.value.substring(end, e.value.length);
+        if (invert) {
+            e.selectionStart = start;
+            e.selectionEnd = start+txt.length;
+        } else
+            e.selectionStart = e.selectionEnd = start+txt.length;
+    } else {
+        e.value += e;
+    }
+    e.focus();
+}
+
+function show_ataritext(f,lst)
+{
+    render_file(f);
+    var layout = _radios["layout"].value;
+    var cols = layout < 2 ? 40:80;
+    if (layout == 3)
+        lst.forEach(s => cols = Math.max(cols,s.length));
+
+    lst = atari2ascii(lst);
+    var ta = _q("textarea");
+    if (layout == 0) {
+        ta.style.paddingLeft = '32px';
+        cols -= 2;
+    }
+    else
+        ta.style.paddingLeft = '0px';
+    if (layout == 3)
+        ta.style.fontSize = '8px';
+    else
+        ta.style.fontSize = '16px';
+
+    ta.cols = cols;
+    ta.rows = lst.length;       // approximate
+    ta.value = lst.join('\n');
+
+    //  hack to avoid scrolling
+    ta.rows = Math.ceil(ta.scrollHeight/ta.offsetHeight*ta.rows);
+    if (ta.scrollHeight > ta.offsetHeight)
+        ta.rows = ta.rows+1;
+}
+
+// old fashioned font
+function show_font(f,lst,font,palette)
 {
     render_file(f);
 
@@ -1370,6 +1770,14 @@ function drop_init(el,onfile,all_done)
         evt.preventDefault();
         over(0);
         handleFiles(evt.dataTransfer.files);
+
+        // check for dragged urls of images
+        var items = evt.dataTransfer.items;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].kind == 'string' && items[i].type == 'text/uri-list') {
+                items[i].getAsString(s => console.log(s));  // cross origin will make this useless
+            }
+        }
     }
 
     function handleDragOver(evt) {
@@ -1623,6 +2031,8 @@ function ataribasic(a,i,len)
 		{
 			if (n.length && n[n.length-1] == '(')
 				n = n.substr(0,n.length-1);	// 
+            if (nmap[n])
+                console.log(`reapeated variable name '${n}'`);
             nmap[n] = 1;
             ncount++;
 			b.variable_names.push(n);
@@ -1630,7 +2040,7 @@ function ataribasic(a,i,len)
 		}
 	}
 
-    if (Object.keys(nmap).length == 1 && ncount > 1)
+    if (Object.keys(nmap).length != ncount)
     {
         console.log("resetting variable names");
         b.variable_names = [];  // name table was set to the same value: reset it
@@ -1827,14 +2237,7 @@ function ataribasic(a,i,len)
 		listing.push(line);
 		j += len;
 	}
-
-    var d = [];
-    listing.forEach(line => {
-        for (var i = 0; i < line.length; i++)
-            d.push(line.charCodeAt(i));
-        d.push(0x9B);
-    });
-	return {listing:listing,tokens:b,lst:new Uint8Array(d)}
+	return {listing:listing,tokens:b}
 }
 
 //===================================================================================================
@@ -3120,8 +3523,7 @@ function show_fnt(f)
     ];
     s.forEach(line => t.push(' ' + line));
     t.push("");
-
-    show_ataritext(f,t,f.data,multicolor?_palette:null);
+    show_font(f,t,f.data,multicolor?_palette:null);
 }
 
 var _exts = {
@@ -3176,7 +3578,7 @@ var _exts = {
 };
 
 // guss the file type
-function get_ext(name,a)
+function get_ext(name,a,img)
 {
     var i = name.lastIndexOf(".");
     if (i != -1) {
@@ -3184,6 +3586,9 @@ function get_ext(name,a)
         if (_exts[ext])
             return ext;
     }
+
+    if (img)
+        return "gr8";
 
     var sig = le16(a,0);
     if (sig == 0x296)
@@ -3233,13 +3638,13 @@ var _shown;
 function save(as_lst)
 {
     var f = _shown;
-    if (as_lst && f.ext == "bas")
+    if (as_lst)
     {
-        var b = ataribasic(f.data,0,f.data.length);
+        var data = get_ataritext();
         var n = f.name;
         if (n.substr(n.length-4).toLowerCase() == ".bas")
             n = n.substr(0,n.length-4);     // trim ".BAS"
-        save_bytes(n+".LST",b.lst);
+        save_bytes(n+".LST",data);
     } else
         save_bytes(f.name,f.data);
 }
@@ -3884,10 +4289,10 @@ function show_as(e)
 function toggle_hex()
 {
     if (!_shown) return;
-    if (_shown.ext == "hex")
+    if (_shown.ext == "dat")
         show_as(_shown.original_ext);
     else
-        show_as("hex");
+        show_as("dat");
 }
 
 function refresh()
@@ -3906,11 +4311,11 @@ function close_container(id)
     render_state(_containers);
 }
 
-function load_data(name,a)
+function load_data(name,a,img)
 {
-    var ext = get_ext(name,a);
+    var ext = get_ext(name,a,img);
 	if ((ext != "atr") && (ext != "atx") && (ext != "pro")) {        // not an atr file
-        var f = {name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7};
+        var f = {name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7,img:img};
         var i = name.lastIndexOf(".");
         var ext83 = ext;
         if (i != -1) {
@@ -3949,28 +4354,82 @@ function load_data(name,a)
 //===================================================================================================
 // https://www.atarimagazines.com/software/software.html
 
+var _images = [];
+
+function flush_images()
+{
+    _images.forEach(f => {
+        var b = '';
+        for (var i = 0; i < f.data.length; i++)
+            b += String.fromCharCode(f.data[i]);
+        var url = `data:${f.file.type};base64,${btoa(b)}`;
+
+        var img = document.createElement('img');
+        img.src = url;
+        img.hidden = true;
+        img.onload = (evt) => {
+            load_data(f.file.name,f.data,img);
+            refresh_containers();
+            document.body.removeChild(img);
+        }
+        document.body.appendChild(img);
+    });
+    _images = [];
+}
+
+function refresh_containers()
+{
+    render_state(_containers);
+    if (_containers.length)
+        show(_containers[0].files[0].id);    // select on
+}
+
+// #153382 - BG 0x94
+var _cursorX = 0;
+var _cursorY = 0;
 function load()
 {
+    console.log('#'+hex(atari_palette_rgb[0x94],6));
+    console.log('#'+hex(atari_palette_rgb[0x9E],6));
+
     drop_init(_q("#toc"),
         (file,ab) => {
-            load_data(file.name,new Uint8Array(ab))
+            if (file.type.indexOf("image")!= -1)
+                _images.push({file:file,data:new Uint8Array(ab)});
+            else
+                load_data(file.name,new Uint8Array(ab))
         },
         () => {
-            render_state(_containers);
-            show(_containers[0].files[0].id);    // select one
+            flush_images();
+            refresh_containers();
         }
     );
     _fcanvas = get_font(_font);
+
+    document.body.onkeyup = function (e) {
+        if (e.key == "Alt")
+            render_kb(0);
+    }
+
+    document.onmousemove = function(e) {
+        _cursorX = e.pageX;
+        _cursorY = e.pageY;
+    }
+
     document.body.onkeydown = function (e) {
-        switch (e.key) {
-            case 'o':
-            case 'O':
-                _q("#fe").click();
-                break;  // open a file....
-            case 'h':
-            case 'H':
-                toggle_hex();
-                break;  // toggle hex display
+        if (e.key == "Alt")
+            render_kb(1);
+        else if (e.ctrlKey) {
+            switch (e.key) {
+                case 'o':
+                case 'O':
+                    _q("#fe").click();
+                    break;  // open a file....
+                case 'h':
+                case 'H':
+                    toggle_hex();
+                    break;  // toggle hex display
+            }
         }
     };
     render_state(_containers);
@@ -4092,6 +4551,8 @@ function render_file(f)
 {
     var txt = _exts[f.ext] ? _exts[f.ext].is_txt : false;
     var img = _exts[f.ext] ? _exts[f.ext].is_img : false;
+    img = img || f.ext == 'fnt';
+    var pre = !txt && !img;
     var controls = `<div class='radio'>`;
     var buttons = '';
 
@@ -4118,12 +4579,44 @@ function render_file(f)
                 <div style='display:inline-block;float:right'>${controls}</div>
             </div>
         </div>
-        <div id="file">${(txt || img) ? `<div><canvas id="show"></canvas></div>` : `<pre style="padding:8px" id="show">eh?</pre>`}</div>`
+        <div id="file">
+            <div>
+                ${pre ? `<pre id="show"></pre>` : ''}
+                ${img ? `<canvas id="show"></canvas>` : ''}
+                ${txt ? `<textarea class='atari' id='atari_text'></textarea>` : ''}
+            </div>
+        </div>`
     );
+}
+
+function render_kb(vis)
+{
+    var kb = _q(".keyboard");
+    vis = vis && _q("#atari_text");
+    if (!vis) {
+        kb.style.display = "none";
+        return;
+    }
+
+    var s = `<div style="border:solid #AAA 1px">`;
+    for (var y = 0; y < 16; y++) {
+        s += '<div>';
+        for (var x = 0; x < 16; x++)
+            s += '<span>'+String.fromCharCode(x + y*16 + 0xE000)+'</span>';
+        s += '</div>';
+    }
+    s += `<div class='keyboard_invert'>Invert Selection</div></div>`;
+
+    kb.onclick = (evt) => keyboard(evt.target.innerText);
+    kb.innerHTML = s;
+    kb.style.left = (_cursorX-16*8) + "px";
+    kb.style.top = (_cursorY-16*8) + "px";
+    kb.style.display = "block";
 }
 
 </script>
 <body>
+<div class="keyboard"></div>
 <header>
 <h2>ATR Image Explorer</h2>
 <br />
@@ -4134,7 +4627,10 @@ function render_file(f)
 <div id="menu_container" ></div>
 <p style="text-align:center;color:#AAA;font-weight:300">
     <span class='open' onclick='_q("#fe").click()'>Open</span><br/>
-    <a href="https://github.com/rossumur/esp_8_bit">https://github.com/rossumur/esp_8_bit</a>
+    <a href="https://github.com/rossumur/esp_8_bit">https://github.com/rossumur/esp_8_bit</a><br/><br/>
+    <i><b>Ctrl+O</b> opens File Dialog</i><br/>
+    <i><b>Ctrl+H</b> toggles Hex View</i><br/>
+    <i><b>Option</b> opens Keyboard in Editor</i><br/>
 </p>
 <input type="file" id="fe" multiple style="display:none">
 </nav>
