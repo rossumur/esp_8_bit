@@ -44,6 +44,9 @@ li:hover {
 li .recovered {
     filter: brightness(75%);
 }
+li .isdir {
+    filter: brightness(125%);
+}
 h1, h2, h3, h4, h5, h6 {
 	font-weight: 300;
 }
@@ -220,9 +223,13 @@ td {
 .atari {
     font-family: 'Atari';
     font-size:16px;
+    line-height:16px;
     background: #153382;
     color: #B5D3FF;
-    letter-spacing: -1px;
+}
+
+#atari_text {
+    padding: 4px;
 }
 
 pre {
@@ -231,32 +238,62 @@ pre {
     line-height: 10px;
 }
 
-pre strong {
+pre data {
     font-family: 'Atari';
     font-size:8px;
+    font-weight: normal;
     background: #153382;
     color: #B5D3FF;
+}
+
+.floater {
+    position: fixed;
+    z-index: 10;
+    cursor: pointer;
+    user-select: none;
+    line-height: 16px;
+    letter-spacing: 0px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
+}
+
+.floater span:hover {
+    filter: brightness(200%);
+}
+
+.floater span:active {
+    background: #B5D3FF;
+    color: #153382;
+}
+
+.disassembly {
+    left: 24px;
+    top: 384px;
+    width: 492px;
+    max-height: 384px;
+    overflow: scroll;
+    background: #EEE;
+}
+.tools {
+    width: 20px;
+    height: 84px;
+    left: 0px;
+    top: 320px;
+    text-align:center;
+}
+
+.dimmed {
+    filter: brightness(75%);
 }
 
 .keyboard {
     display: none;
-    position: absolute;
-    height: 274px;
-    width: 258px;
-    font-family: 'Atari';
-    font-size: 16px;
-    background: #153382;
-    color: #B5D3FF;
-    line-height: 16px;
-    z-index: 10;
-    cursor: pointer;
-    user-select: none;
-    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
+    left: 24px;
+    top: 320px;
+    height: 256px;
+    width: 256px;
+        z-index: 11;
 }
 
-.keyboard span:hover {
-    filter: brightness(200%);
-}
 .keyboard_invert {
     font-family:"Open Sans","Helvetica Neue",Helvetica;
     text-align: center;
@@ -370,7 +407,7 @@ function hex_line(addr,data,i,len,awidth)
         p += `<span style='background:#CCC'>${' '.repeat(right-1)} </span>`;
         s.push('   '.repeat(right));
     }
-	return s.join('') + "  <strong>" + p + "</strong>";
+	return s.join('') + "  <data>" + p + "</data>";
 }
 
 function hex_dump(a,i,len,awidth)
@@ -476,43 +513,107 @@ function get_font(src,palette,one_bit)
 
 //===================================================================================================
 //===================================================================================================
-// LBG
+//  Kmeans for palettes
 
-var BITS = 5;
-var BITS_LEN = (1<<BITS)*(1<<BITS)*(1<<BITS);
-function rgb555(pix)
+function kmeans(pix,centroid_count,gray)
 {
-    var d = pix.data;
-    var rgb555 = new Uint32Array(BITS_LEN);
-    var i = 0;
-    for (var y = 0; y < pix.height; y++) {
-        for (var x = 0; x < pix.width; x++) {
-            var n = ((d[i]>>3)<<10) | ((d[i+1]>>3)<<5) | (d[i+2]>>3);
-            rgb555[n]++;
-            i += 4;
+    console.log("kmeans " + centroid_count + (gray ? "(grayscale)" : ""));
+    var sample_count = pix.width*pix.height;
+    var samples = [];
+    for (var i = 0; i < sample_count; i++)
+        samples.push(rgb2yiq(pix.data[i*4+0],pix.data[i*4+1],pix.data[i*4+2]));
+
+    // make grey centroids
+    var centroids = [];
+    for (var i = 0; i < centroid_count; i++)
+        centroids.push({color:{y:i*15/(centroid_count-1) | 0,i:0,q:0},avg:{y:0,i:0,q:0},err:0,count:0});
+
+    // match samples to centroids
+    var last = 0;
+    for (var pass = 0; pass < 16; pass++) {
+
+        // match all the samples
+        var total_err = 0;
+        for (var i = 0; i < sample_count; i++) {
+            var mine = 0x7FFFFFF;
+            var index = -1;
+            var color = samples[i];
+            for (var j = 0; j < centroid_count; j++) {
+                var e = yiq_distance(color,centroids[j].color);
+                if (e < mine) {
+                    mine = e;
+                    index = j;
+                }
+            }
+            var c = centroids[index];
+            c.avg.y += color.y;
+            c.avg.i += color.i;
+            c.avg.q += color.q;
+            c.count++;
+            c.err += mine;     // accumulate error
+            total_err += mine;
+        }
+
+        // recalculate centroid color
+        var errs = [];
+        for (var i = 0; i < centroid_count; i++) {
+            var c = centroids[i];
+            if (gray)
+                c.avg.i = c.avg.q = 0;
+            if (c.count)
+                c.color = {y:c.avg.y/c.count, i:c.avg.i/c.count, q:c.avg.q/c.count};
+            errs.push({index:i,err:c.err});
+        }
+
+        errs.sort((a,b) => b.err - a.err);
+        console.log(errs);
+        console.log(centroids);
+
+        // split centroids if required
+        for (var i = 0; i < centroid_count; i++) {
+            if (centroids[i].count == 0) {                              // centroid is not being used
+                var c0 = centroids[errs[0].index].color;
+                var c1 = centroids[errs[1].index].color;                // make new centroid at average of two biggest errors
+                centroids[i].color = {y:(c0.y+c1.y)/2, i:(c0.i+c1.i)/2, q:(c0.q+c1.q)/2};
+            }
+            // reset centroids
+            centroids[i].count = centroids[i].err = 0;
+            centroids[i].avg = {y:0,i:0,q:0};
+        }
+
+        console.log("pass: " + pass + ":" + total_err);
+        if (last && total_err >= last)
+            break;
+        last = total_err;
+    }
+
+    var pal = [];
+    for (var i = 0; i < centroid_count; i++) {
+        var c = centroids[i].color;
+        pal.push(yiq2atari(c.y,c.i,c.q));
+    }
+    console.log(pal);
+    return pal;
+}
+
+// 888 rgb to atari
+function to_atari(rgb)
+{
+    var mine = 0x7FFFFFF;
+    var mini = -1;
+    for (var i = 0; i < 256; i++) {
+        var a = atari_palette_rgb[i];
+        var r = ((rgb >> 16) & 0xFF) - ((a >> 16) & 0xFF);
+        var g = ((rgb >> 8) & 0xFF) - ((a >> 8) & 0xFF);
+        var b = (rgb & 0xFF) - (a & 0xFF);
+        var e = r*r + g*g + b*b;
+        if (e < mine) {
+            mine = e;
+            mini = i;
         }
     }
-    return rgb555;
+    return mini;
 }
-
-function kmeans(pix)
-{
-    // collect info on colors used
-    var counts = rgb555(pix);
-    var used = new Uint32Array(BITS_LEN);
-    var j = 0;
-    for (var i = 0; i < BITS_LEN; i++) {
-        if (counts[i])
-            used[j++] = i;
-    }
-    used.length = j;
-    console.log(j + " used of " + pix.width*pix.height);
-
-    var centroids = [0x00000000,0x00414141,0x00898989,0x00EAEAEA].forEach(c => {
-
-    });
-}
-
 //===================================================================================================
 //===================================================================================================
 // Images
@@ -552,6 +653,104 @@ var atari_palette_rgb = [
     0x0076720B,0x0085821B,0x0097932D,0x00A8A43E,0x00B9B650,0x00CCC963,0x00E0DD77,0x00F7F48F,
 ];
 
+function rgb2yiq(r,g,b)
+{
+    return {
+        y:r * 0.299 + g * 0.587 + b * 0.114,
+        i:r * 0.596 - g * 0.275 - b * 0.321,
+        q:r * 0.212 - g * 0.523 + b * 0.311
+    }
+}
+
+function rgb2atari(r,g,b)
+{
+    var yiq = rgb2yiq(r,g,b);
+    var angle = Math.atan2(yiq.i,yiq.q);
+    var saturation = yiq.i*yiq.i + yiq.q*yiq.q;
+    var offset = (180-26.8)*Math.PI/180.0;
+    var scale = 360/26.8;
+    var cr = (offset - angle)*scale/(2*Math.PI) | 0;
+    cr %= 15;
+    if (saturation < 1)
+        cr = 0;
+    else
+        cr++;
+    return (cr << 4) | (yiq.y/16|0);
+}
+
+function atari2yiq(a)
+{
+    var cr = a >> 4;
+    var i = 0;
+    var q = 0;
+    if (cr) {
+        var color_diff = 2*Math.PI*26.8/360;
+        var angle = Math.PI * 303/180 + (cr-1)*color_diff;
+        i = Math.cos(angle)*63;
+        q = Math.sin(angle)*63;
+    }
+    return {y:(a & 0xF)*16, i:i, q:q};
+}
+
+function yiq2atari(y,i,q)
+{
+    var angle = Math.atan2(i,q);
+    var saturation = i*i + q*q;
+    var offset = (180-26.8)*Math.PI/180.0 - angle;
+    if (offset < 0)
+        offset += 2*Math.PI;
+    var scale = 360/26.8;
+    var cr = offset*scale/(2*Math.PI);
+    cr = (cr + 0.5) | 0;
+    if (saturation < 256)
+        cr = 0;
+    else
+        cr = (cr+1) & 0xF;
+    cr = (cr << 4) | ((y/16 + 0.5)|0);
+    console.log("y:" + y + " i:" + i + " q:" + q + " -> " + hex(cr) + " sat:" + saturation);
+    return cr;
+}
+
+function tst()
+{
+    for (var i = 0; i < 256; i++) {
+        var yiq = atari2yiq(i);
+        var c = yiq2atari(yiq.y,yiq.i,yiq.q);
+        console.log(i + "->" + c);
+        console.log(yiq);
+    }
+}
+//tst();
+
+// difference measure between two atari color indexes
+var _chroma_diff;
+function atari_distance(a,b)
+{
+    var luma = (a & 0xF) - (b & 0xF);
+    luma = luma*luma;
+    if (!_chroma_diff) {
+        _chroma_diff = new Int16Array(256);
+        for (var i = 0; i < 256; i++) {
+            var c0 = ((i & 0xF) << 4) | 7;
+            var c1 = ((i >> 4) << 4) | 7;
+            var p0 = atari2yiq(c0);
+            var p1 = atari2yiq(c1);
+            var di = p0.i - p1.i;
+            var dq = p0.q - p1.q;
+            _chroma_diff[i] = di*di + dq*dq;
+        }
+    }
+    return _chroma_diff[(a & 0xF0) | (b >> 4)] + luma;
+}
+
+function yiq_distance(a,b)
+{
+    var dy = a.y-b.y;
+    var di = a.i-b.i;
+    var dq = a.q-b.q;
+    return dy*dy + di*di + dq*dq;
+}
+
 // 
 var _lfsr = 0xACE1;
 function lfsr()
@@ -562,46 +761,34 @@ function lfsr()
     return _lfsr;
 }
 
-function dither_image(pix,f,pal)
+// mode 0 = Atkinson Dither
+// mode 1 = noise
+function dither_image(pix,f,pal,mode)
 {
-    var ap = atari_palette_rgb;
     var d = pix.data;
-
-    // expand palette
-    var rgb = new Uint8Array(pal.length*4);
-    for (var i = 0; i < pal.length; i++) {
-        var c = ap[pal[i]];
-        rgb[i*4+0] = c >> 16;
-        rgb[i*4+1] = c >> 8;
-        rgb[i*4+2] = c;
-    }
-
+    var buf = new Uint8Array(3);
     var errs = new Int16Array(3);
-    function get_index(src,p) {
+    var dst = new Uint8Array(pix.width*pix.height);
+
+    function get_index(src,p)
+    {
         var mind = -1;
         var merr = 0xFFFFFF;
+        var p0 = rgb2atari(src[p+0],src[p+1],src[p+2]); // index of pixel
         for (var i = 0; i < pal.length; i++) {
-            var err = 0;
-            for (var j = 0; j < 3; j++) {
-                var e = src[p+j]-rgb[i*4+j];
-                err += e*e;
-            }
+            var err = atari_distance(p0,pal[i]);  // indexed distance measure
             if (err < merr) {
                 merr = err;
                 mind = i;
             }
         }
+        var c = atari_palette_rgb[pal[mind]];
         var scale = 6;
-        errs[0] = (src[p+0] - rgb[mind*4+0])/scale;   // save error in RGB
-        errs[1] = (src[p+1] - rgb[mind*4+1])/scale;
-        errs[2] = (src[p+2] - rgb[mind*4+2])/scale;
+        errs[0] = (src[p+0] - ((c >> 16) & 0xFF))/scale;   // save error in RGB
+        errs[1] = (src[p+1] - ((c >> 8) & 0xFF))/scale;
+        errs[2] = (src[p+2] - ((c >> 0) & 0xFF))/scale;
         return pal[mind];    // closest index
     }
-
-    var i = 0;
-    var dst = new Uint8Array(pix.width*pix.height);
-    var row = 0;
-    var buf = new Uint8Array(3);
 
     function pin(n) {
         if (n < 0) return 0;
@@ -614,6 +801,7 @@ function dither_image(pix,f,pal)
         var mask = 0x7F;
         return (lfsr() & mask)-mask/2;
     }
+
     function noisy(i)
     {
         buf[0] = pin(d[i+0] + rnd());
@@ -628,10 +816,11 @@ function dither_image(pix,f,pal)
         d[i+2] = pin(d[i+2]+errs[2]);
     }
 
-    var m = 0;
+    var i = 0;
+    var row = 0;
     for (var y = 0; y < pix.height; y++) {
         for (var x = 0; x < pix.width; x++) {
-            switch (m) {
+            switch (mode) {
                 case 0:
                     dst[i++] = get_index(d,row+x*4);
                     add_err(x+1,y+0);
@@ -652,7 +841,7 @@ function dither_image(pix,f,pal)
     return dst;
 }
 
-function convert_image(canvas,f,pal) {
+function convert_image(canvas,f,pal,reload) {
     var width = 320;
     var height = 192;
 
@@ -671,22 +860,32 @@ function convert_image(canvas,f,pal) {
     }
 
     // 80,160 or 320 wide
+    var pal_size = 0;
     switch (f.ext) {
         case "gr7":
             width /= 2;
-            dst_width /= 2;
+            if (src_width == 160 && src_height == 192) {
+                // already native size
+            } else {
+                dst_width /= 2;
+            }
+            pal_size = 4;
             break;
         case "gr8":
-            pal = [0,15];
+            pal_size = 2;
             break;
         case "gr9":
             pal = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
         case "g10":
             width /= 4;
-            dst_width /= 4;
+            if (src_width == 80 && src_height == 192) {
+                // already native size
+            } else {
+                dst_width /= 4;
+            }
+            pal_size = 9;
             break;
     }
-
 
     canvas.width = width;
     canvas.height = height;
@@ -695,8 +894,10 @@ function convert_image(canvas,f,pal) {
     ctx.drawImage(f.img,0,0,img.width,src_height,(width-dst_width)/2,(height-dst_height)/2,dst_width,dst_height);
 
     var pix = ctx.getImageData(0,0,width,height);
-    kmeans(pix);
-    var indexed = dither_image(pix,f,pal);
+    if (pal_size && reload)
+        pal = kmeans(pix,pal_size,1);
+    
+    var indexed = dither_image(pix,f,pal,1);  // dither to atari palette
     var rgb = Uint32Array.from(indexed).map(i => atari_palette_rgb[i]);
     rgb2canvas(canvas,rgb,width,height,1);
     return [320/canvas.width*2,192/canvas.height*2];
@@ -945,7 +1146,7 @@ function render_image(canvas,f)
     var multihip_pal = null;
 
     if (f.img)
-        return convert_image(canvas,f,pal0);
+        return convert_image(canvas,f,pal0,_reload_palette);
 
     var data = f.data;
     var ext = f.ext;
@@ -1332,7 +1533,16 @@ function render_image(canvas,f)
 // UI
 
 // make an atari line of text to look like dir
-function draw_line(id,txt,recovered)
+
+function set_class(el,cname,on)
+{
+    if (on)
+        el.classList.add(cname);
+    else
+        el.classList.remove(cname);
+}
+
+function draw_line(id,txt,recovered,is_dir)
 {
     var c = _q(id);
     c.width = txt.length*8;
@@ -1340,11 +1550,8 @@ function draw_line(id,txt,recovered)
     var ctx = c.getContext('2d');
     draw(ctx,txt,0,0);
     resize_parent(c,2);
-
-    if (recovered)
-        c.classList.add("recovered");
-    else
-        c.classList.remove("recovered");
+    set_class(c,"recovered",recovered);
+    set_class(c,"isdir",is_dir);
 }
 
 // Simple radio and check buttons
@@ -1408,9 +1615,11 @@ function resize_parent(e,sx,sy)
     e.parentNode.style.height = e.height*sy + "px";
 }
 
-function atari2ascii(lst,escape)
+// U+200B ZERO-WIDTH SPACE after ':',',''
+function atari2ascii(lst,insert_breaks)
 {
     var r = [];
+    var wbr = insert_breaks ? String.fromCharCode(0x200B) : null;   // ZERO-WIDTH SPACE
     lst.forEach(src => {
         var dst = '';
         for (var i = 0; i < src.length; i++) {
@@ -1423,20 +1632,13 @@ function atari2ascii(lst,escape)
                     c += 0xE000;
                     break;
                 default:
-                    if (escape)
-                    {
-                        switch(c) {
-                            case '<':
-                            case '>':
-                            case '&':
-                                c += 0xE000;
-                                break;
-                        }
-                    }
                     if (c < 0x20 || c > 0x7E)   // keep printing chars whole
                         c += 0xE000;
             }
-            dst += String.fromCharCode(c);
+            c = String.fromCharCode(c);
+            dst += c;
+            if (wbr && (c == ':' || c == ','))
+                dst += wbr;
         }
         r.push(dst);
     })
@@ -1447,23 +1649,79 @@ function ascii2atari(lst)
 {
     var d = [];
     lst.forEach(src => {
-        for (var i = 0; i < src.length; i++)
-            d.push(src.charCodeAt(i) & 0xFF);
+        for (var i = 0; i < src.length; i++) {
+            c = src.charCodeAt(i);
+            if (c != 0x200B)
+                d.push(c & 0xFF);
+        }
         d.push(0x9B);
     });
     return new Uint8Array(d);
 }
 
-function get_ataritext()
+function editor()
 {
-    return ascii2atari(_q("textarea").value.split("\n"));
+    return _q("#atari_text");
 }
 
-function keyboard(txt)
+function get_ataritext()
 {
-    var e = _q("textarea");
+    return ascii2atari(editor().innerText.split("\n"));
+}
+
+var _gs = window.getSelection || document.getSelection;
+function get_selection()
+{
+    return _gs().toString();
+}
+
+function invert_selection()
+{
+    keyboard(get_selection(),true);
+}
+
+function disassemble_selection()
+{
+    var txt = get_selection();
+    if (!txt || !txt.length)
+        return;
+
+    var asm = [];
+    for (var i = 0; i < txt.length; i++)
+        asm.push(txt.charCodeAt(i)&0xFF);
+    var dis = _q(".disassembly");
+    _h("#disassembly",xex_dump("asm",asm,0,asm.length));
+
+    var r = _gs().getRangeAt(0).getBoundingClientRect();
+    var dx = (dis.width - r.width)/2;
+    dis.style.left = ((dx | 0) + r.left) + "px";
+    dis.style.top = r.bottom + 4 + "px";
+    dis.hidden = false;
+    editor().focus();
+}
+
+function selection_change()
+{
+    var el = document.activeElement;
+    if (el.id == "atari_text")
+    {
+        var txt = get_selection();
+        var sel = txt && txt.length;
+        set_tool("I",sel);  // we have a selection
+        set_tool("D",sel);
+    }
+}
+
+function keyboard(txt,invert)
+{
+    var e = editor();
     if (!e)
         return;
+
+    if (!txt) {
+        e.focus();
+        return;
+    }
 
     // same in ATASCII as ASCII
     // will cause unescaping of <>& etc
@@ -1479,36 +1737,39 @@ function keyboard(txt)
         return dst;
     }
 
-    var invert = txt == "Invert Selection";
     if (invert) {
-        var start = e.selectionStart;
-        var end = e.selectionEnd;
-        txt = e.value.substring(start, end);
+        txt = get_selection();
         var s = '';
         for (var i = 0; i < txt.length; i++) {
             var c = txt.charCodeAt(i);
-            s += String.fromCharCode(c < 0x20 ? c : (c ^ 0x80) | 0xE000);
+            c = ((c < 0x20) || (c == 0x200B)) ? c : (c ^ 0x80) | 0xE000;
+            s += String.fromCharCode(c);
         }
         txt = s;
     }
     txt = common_chars(txt);
 
-    // insert special character
-    if (document.selection) {
-        e.focus();
-        document.selection.createRange().text = txt;    // IE
-    } else if (e.selectionStart || e.selectionStart == '0') {
-        var start = e.selectionStart;
-        var end = e.selectionEnd;
-        e.value = e.value.substring(0, start) + txt + e.value.substring(end, e.value.length);
-        if (invert) {
-            e.selectionStart = start;
-            e.selectionEnd = start+txt.length;
-        } else
-            e.selectionStart = e.selectionEnd = start+txt.length;
-    } else {
-        e.value += e;
-    }
+    var range = _gs().getRangeAt(0);
+    if (invert)
+        range.deleteContents();
+    else
+        range.collapse();
+
+    // insert
+    if (txt.indexOf('\n') != -1) {  // need to deal with newlines and insert the as breaks
+        var lst = txt.split('\n');
+        var n = [];
+        for (var i = 0; i < lst.length; i++) {
+            n.push(document.createTextNode(lst[i]));
+            if (i != lst.length-1)
+                n.push(document.createElement("br"));
+        }
+        var i = n.length;
+        while (i--)
+            range.insertNode(n[i]);
+        range.setEndAfter(n[n.length-1]);
+    } else
+        range.insertNode(document.createTextNode(txt));
     e.focus();
 }
 
@@ -1519,9 +1780,9 @@ function show_ataritext(f,lst)
     var cols = layout < 2 ? 40:80;
     if (layout == 3)
         lst.forEach(s => cols = Math.max(cols,s.length));
+    lst = atari2ascii(lst,f.ext == "bas");
 
-    lst = atari2ascii(lst);
-    var ta = _q("textarea");
+    var ta = editor();
     if (layout == 0) {
         ta.style.paddingLeft = '32px';
         cols -= 2;
@@ -1529,18 +1790,12 @@ function show_ataritext(f,lst)
     else
         ta.style.paddingLeft = '0px';
     if (layout == 3)
-        ta.style.fontSize = '8px';
-    else
-        ta.style.fontSize = '16px';
-
-    ta.cols = cols;
-    ta.rows = lst.length;       // approximate
-    ta.value = lst.join('\n');
-
-    //  hack to avoid scrolling
-    ta.rows = Math.ceil(ta.scrollHeight/ta.offsetHeight*ta.rows);
-    if (ta.scrollHeight > ta.offsetHeight)
-        ta.rows = ta.rows+1;
+        ta.style.fontSize = ta.style.lineHeight = '8px';
+    else {
+        ta.style.fontSize = ta.style.lineHeight = '16px';
+        ta.style.minWidth = ta.style.maxWidth = (cols*16) + "px";
+    }
+    ta.innerText = lst.join('\n');
 }
 
 // old fashioned font
@@ -1734,11 +1989,7 @@ function drop_init(el,onfile,all_done)
 {
     function over(b)
     {
-        var c = _q("#toc").classList;
-        if (b)
-            c.add("over");
-        else
-            c.remove("over");
+        set_class(_q("#toc"),"over",b);
     }
 
     function handleFiles(files)
@@ -3305,6 +3556,7 @@ function disassemble2(asm,str,ram,flags)
     {
         return lines[lines.length-1].pc + lines[lines.length-1].step;
     }
+
     function runny(lines)
     {
         var start = lines[0].pc;
@@ -3391,6 +3643,11 @@ function disassemble2(asm,str,ram,flags)
 function le16(a,i)
 {
 	return a[i] | ((a[i+1]) << 8);
+}
+
+function le24(a,i)
+{
+    return a[i] | ((a[i+1]) << 8) | ((a[i+2]) << 16);
 }
 
 function le32(a,i)
@@ -3530,7 +3787,10 @@ var _exts = {
     "atr": {name:"ATR Disk Image", is_disk:true},
     "atx": {name:"ATX Disk Image", is_disk:true},
     "pro": {name:"PRO Disk Image", is_disk:true},
+    "xfd": {name:"XFD Disk Image", is_disk:true},
+    "dsk": {name:"Raw Sectors", is_disk:true},
     "dat": {name:"Raw Data"},
+    "arc": {name:"ARC Archive"},
 
     "--0": {name:"Languages"},
     "bas": {name:"Atari Basic/Turbo Basic XL", is_txt:true },
@@ -3541,6 +3801,8 @@ var _exts = {
     "doc": {name:"Document", is_txt:true },
     "ata": {name:"ATASCII Text File", is_txt:true },
     "txt": {name:"Text File", is_txt:true },
+    "bat": {name:"Batch File", is_txt:true },
+    "man": {name:"Manual", is_txt:true },
 
     "--1": {name:"Graphics"},
     "fnt": {name:"Font File", is_txt:true, font_set:true },
@@ -3600,6 +3862,9 @@ function get_ext(name,a,img)
     if (PRO.is_pro(a))
         return "pro";
 
+    if (XFD.is_xfd(a))
+        return "xfd";
+
     if (sig == 0xFFFF && (le16(a,2) < le16(a,4)))
         return "xex";
 
@@ -3611,6 +3876,9 @@ function get_ext(name,a,img)
 
     if (sig == 0xFEFE)
         return "m65";
+
+    if (sig == 0x081A || sig == 0x041A)
+        return "arc";
 
     if (ataribasic(a,0,a.length))
         return "bas";
@@ -3649,6 +3917,32 @@ function save(as_lst)
         save_bytes(f.name,f.data);
 }
 
+//===================================================================================================
+//===================================================================================================
+// xex/obj disassembly 
+
+function get_xex_segs(a,i,len)
+{
+    if (le16(a,i) != 0xFFFF)
+        return null;
+    var e = i + len;
+    var segs = [];
+    while (i < e) {
+        while (le16(a,i) == 0xFFFF)
+            i += 2;
+        var start = le16(a,i);
+        var end = le16(a,i+2);
+        i += 4;
+        var slen = end+1 - start;
+        if ((slen < 0) || (i + slen > e))
+            return null;
+        var seg = {start:start,end:end,offset:i,len:slen};
+        segs.push(seg);
+        i += slen;
+    }
+    return segs;
+}
+
 function xex_dump(name,a,i,len,expect_header,org,entry)
 {
     if (name == "DOS.SYS")
@@ -3664,7 +3958,9 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
     if (entry)
         entry_points.push(entry);
 
-    var header = le16(a,i) == 0xFFFF;   // 
+    var segs = get_xex_segs(a,i,len);
+    var header = segs && segs.length;   //
+
     var lines = [];
     if (!header)
     {
@@ -3702,40 +3998,21 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
         asms.forEach(asm => disassemble2(asm,lines,ram,flags));
     } else {
         lines.push("; file " + name + " is " + len + " bytes");
-        var segs = [];
-        var e = len+i;
         var s;
 
         // walk segments, collect entry points
         // draw them all at head, repeat them in body
-        while (i < e) {
-            var start = 0xFFFF;
-            var end = 0xFFFF;
-            var addr = 0xFFFF;
-            while (start == 0xFFFF) {
-                start = le16(a,i);
-                i += 2;
-            }
-            end = le16(a,i);
-            var slen = end+1 - start;
-            i += 2;
-            if ((slen < 0) || (i + slen > e)) {
-                lines.push("; invalid xex segment ");
-                break;
-            }
-            s = "; code segment " + slen + " bytes at " + hex(start,4) + ":" +  hex(end,4);
 
-            var seg = {start:start,end:end,offset:i};
-            if ((slen == 2) && (start == 0x2E0 || start == 0x2E2)) {
-                seg.addr = le16(a,i);
+        segs.forEach(seg => {
+            s = "; code segment " + seg.len + " bytes at " + hex(seg.start,4) + ":" +  hex(seg.end,4);
+            if ((seg.len == 2) && (seg.start == 0x2E0 || seg.start == 0x2E2)) {
+                seg.addr = le16(a,seg.offset);
                 entry_points.push(seg.addr);
                 flags[seg.addr] = 0x80;
-                s += " -> " + (start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
+                s += " -> " + (seg.start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
             }
             lines.push(s);
-            segs.push(seg);
-            i += slen;
-        }
+        });
         lines.push("");
 
         // Do the disassembly
@@ -3745,11 +4022,10 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
                 asms[seg.offset] = disassemble(seg.start,a,seg.offset,seg.end+1 - seg.start,ram,flags);  // disassemble segment
         });
 
-        // Do the disassembly
+        // Completete the disassembly
         segs.forEach(seg => {
             lines.push("; ===================================================");
-            var slen = seg.end+1 - seg.start;
-            s = "; code segment " + slen + " bytes at " + hex(seg.start,4) + ":" +  hex(seg.end,4);
+            s = "; code segment " + seg.len + " bytes at " + hex(seg.start,4) + ":" +  hex(seg.end,4);
             if (seg.addr)
                 s += " -> " + (seg.start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
             lines.push(s);
@@ -3793,6 +4069,40 @@ class PRO {
             while (n--)
                 atr[dst++] = d[src++];
         }
+        return atr;
+    }
+}
+
+class XFD {
+    static
+    is_xfd(d)
+    {
+        return (le16(d,0) == 0x0300) && (le16(d,2) == 0x0700);
+    }
+
+    static
+    to_atr(d)   // append header to raw atrs
+    {
+        var sector_total = 720; // raw image was 702 sectors... typo of 720?
+        var sector_size = 128;
+
+        if (d.length == 1040*128)
+            sector_total = 1040;
+        if (d.length == (128*3 + (1040-3)*256)) {
+            sector_total = 1040;
+            sector_size = 256;
+        }
+
+        var size = sector_total*sector_size;
+        var atr = new Uint8Array(16+size);
+        atr[0] = 0x96;
+        atr[1] = 0x02;
+        atr[2] = (size >> 4) & 0xFF;
+        atr[3] = (size >> 4) >> 8;
+        atr[4] = sector_size & 0xFF;
+        atr[5] = sector_size >> 8;
+        atr[6] = (size >> 4) >> 16;
+        atr.set(d, 16);
         return atr;
     }
 }
@@ -3872,6 +4182,134 @@ class ATX {
     }
 }
 
+class SpartaDOS {
+    constructor(atr) {
+        var d = atr.d;
+        this.atr = atr;
+        this.boot = {
+            sector_map: le16(d,16+9),       // Sector, where is the first Sector map of the main directory.
+            sector_count: le16(d,16+11),    // Number of every sectors on the disk
+            free_sectors: le16(d,16+13),    // Number of free sectors
+            bitmaps: d[16+15],              // Number of Bitmaps
+            first_bitmap: le16(d,16+16),    // Sector used for the first Bitmap.
+            sector_file: le16(d,16+18),     // The first sector, where may be allocated a data sector for a file
+            sector_dir: le16(d,16+20),      // The first sector, where may be allocated a data sector for a directory
+            volume_name: toAscii(d,16+22,8).trim(),
+            tracks: d[16+30],               // Number of tracks; when the bit D7 is set, then the drive is double
+            sector_size: d[16+31] ? 128:256,// Size of sectors (128 or 0 == 256)
+            version: d[16+32],              // $11 - created by SpartaDOS 1.x
+            sequential: d[16+38],           // This number is incremented every time you're making any changes on the disk
+            random: d[16+39],               // Random number of the disk. This number is created while formatting the disk.
+            boot_sector: le16(d,16+40)      // Sector, where is the first Sector map of file specified for booting
+        }
+        this.file_info = {};
+    }
+
+    // first entry in directory is information about the directory itself
+    // start == parent;
+    get_dir(sector_map)
+    {
+        sector_map = sector_map || this.boot.sector_map;
+        var dir = this.read_file(sector_map);
+        var files = [];
+        var dir_info;
+        var sector_size = this.boot.sector_size;
+        for (var i = 0; i < dir.length && dir[i]; i += 23)
+        {
+            if (i == 0) {
+                dir_info = {
+                    flags:dir[i],
+                    parent:le16(dir,i+1),
+                    len:le24(dir,i+3),
+                    name83:toAscii(dir,i+6,8),
+                    name:toAscii(dir,i+6,8).trim()
+                }
+            } else {
+                /*
+                0x01 // protected
+                0x04 // in use
+                0x10 // Erased
+                0x20 // subdirectory
+                */
+                var flags = (dir[i] & 0x04) ? 0 : 0x42;
+                if (dir[i] & 1)
+                    flags |= 0x20;  // locked
+                var f = {
+                    flags:flags,
+                    valid:true,
+                    start:le16(dir,i+1),
+                    len:le24(dir,i+3),
+                    name83:toAscii(dir,i+6,11),
+                    name:toAscii(dir,i+6,8).trim(),
+                    date:le24(dir,i+17),
+                    time:le24(dir,i+20),
+                    is_dir:dir[i] & 0x20
+                }
+                var ext = toAscii(dir,i+14,3).trim();
+                if (ext.length)
+                    f.name += '.' + ext;
+
+                this.file_info[f.start] = f; // we know the length
+
+                f.sectors = [];
+                var sec = this.get_sectors(f.start);
+                for (var j = 0; j < sec.length; j++) {
+                    f.sectors.push({
+                        sector:sec[j],
+                        len: Math.min(sector_size,f.len - j*sector_size),
+                        offset: j
+                    });
+                }
+                f.total = f.sectors.length;
+                files.push(f);
+
+                // recurse?
+                if (f.is_dir)
+                    files = files.concat(this.get_dir(f.start));
+            }
+        }
+        return files;
+    }
+
+    // get all the sectors associated with the file
+    get_sectors(sector_map)
+    {
+        var atr = this.atr;
+        var d = atr.d;
+        var sector_size = this.boot.sector_size;
+
+        // format is next:prev:s:s:s.... 16 bit entries
+        var sectors = [];
+        while (sector_map) {
+            var sm = atr.sector_offset(sector_map);
+            for (var i = 2; i < sector_size/2; i++) {
+                var s = le16(d,sm + i*2);
+                if (!s)
+                    break;
+                sectors.push(s);
+            }
+            sector_map = le16(d,sm);    // next sector of sector map
+        }
+        return sectors;
+    }
+
+    read_file(sector_map)
+    {
+        var atr = this.atr;
+        var file_info = this.file_info[sector_map];
+        var d = atr.d;
+        var dst = [];
+        this.get_sectors(sector_map).forEach(s => {
+            var src = atr.sector_offset(s); 
+            for (var i = 0; i < this.boot.sector_size; i++)
+                dst.push(d[src+i]);
+        });
+        if (file_info && !file_info.is_dir)
+            dst.length = file_info.len;   // clip it if we know the size
+        return new Uint8Array(dst);
+    }
+}
+
 /*
 0x01   File Opened for Output.
 0x02   File Created by Dos 2.
@@ -3889,12 +4327,17 @@ class ATR {
             d = ATX.to_atr(d);
         else if (PRO.is_pro(d))
             d = PRO.to_atr(d);
+        else if (XFD.is_xfd(d))
+            d = XFD.to_atr(d);
+
         this.d = d;
         this.name = name;
         this.size = (le16(d,2) + (d[6] << 16)) << 4;
         this.sector_size = le16(d,4);
         this.sector_count = (this.size-128*3)/this.sector_size + 3;
         this.dir_sector = -1;
+        if (d[16+7] == 0x80)
+            this.sparta = new SpartaDOS(this);
     }
 
     sector_offset(n) {    // 1 based
@@ -3976,6 +4419,9 @@ class ATR {
     // Search the entire disk for sneaky directory entries
     get_dir()
     {
+        if (this.sparta)
+            return this.sparta.get_dir();
+
         var dirs = this.get_dir_range(361,369);
         if (dirs.length < 1 || (this.dir_sector != 361))
             dirs = this.get_dir_range(4,this.sector_count); // try the whole disk
@@ -4081,6 +4527,9 @@ class ATR {
     }
 
     read(f) {
+        if (this.sparta)
+            return this.sparta.read_file(f.start);
+
         var data = [];
         var count = f.total;
         var sector = f.start;
@@ -4106,12 +4555,280 @@ class ATR {
     }
 }
 
+//===================================================================================================
+//===================================================================================================
+// arc files
+
+function dearc_3(srcd,srclen,dstlen)    // RLE - after altirra
+{
+    var dst = 0;
+    var src = 0;
+    var dstd = new Uint8Array(dstlen);
+
+    let last = 0;
+    while (dstlen) {
+        let c = srcd[src++];
+        if (c == 0x90) {
+            if (!srclen--)
+                return null;
+            let d = srcd[src++];
+            if (d == 0) {
+                prevoutput = last;
+                if (!dstlen--)
+                    return null;
+                dstd[dst++] = 0x90;
+            } else {
+                let count = d - 1;
+                if (dstlen < count)
+                    return null;
+                dstlen -= count;
+                while (count--)
+                    dstd[dst++] = last;
+            }
+        } else {
+            last = c;
+            if (!dstlen--)
+                return null;
+            dstd[dst++] = c;
+        }
+    }
+    return dstd;
+}
+
+function dearc_8(srcd,srclen,dstlen)    // after altirra
+{
+    var dst = 0;
+    var src = 0;
+    var n = 256;
+    var last = 0;
+    var byte2 = false;
+    var bits = 9;
+    var accum = 0;
+    var accumbits = 0;
+    var lastCode = 0;
+    var codesRead = 0;
+    var dstd = new Uint8Array(dstlen);
+
+    var prev_link = new Int16Array(4096);
+    var first_char = new Uint8Array(4096);
+    var last_char = new Uint8Array(4096);
+    var tmp = new Uint8Array(4096);
+    for (var i=0; i<256; i++) {
+        prev_link[i] = -1;
+        first_char[i] = last_char[i] = i;
+    }
+
+    if (srcd[src++] != 0xC) // longest code length?
+        return null;
+
+    while(dstlen)
+    {
+        let code = 0;
+        for (let i = 0; i < bits; ++i)
+        {
+            if (!accumbits) {
+                if (!srclen--)
+                    return null;
+                accum = srcd[src++];
+                accumbits = 8;
+            }
+
+            if (accum & 1)
+                code += (1 << bits);
+
+            accum >>= 1;
+            --accumbits;
+            code >>= 1;
+        }
+
+        ++codesRead;
+        if (code > n)
+            return null;
+
+        if (code == 256)
+        {
+            let align = ((-codesRead & 7)*bits) >> 3;
+            if (srclen < align)
+                return null;
+            srclen -= align;
+            src += align;
+
+            // reset code table
+            n = 256;
+            bits = 9;
+            lastCode = 0;
+            accumbits = 0;
+            accum = 0;
+            codesRead = 0;
+            continue;
+        }
+
+        if (n < 4096) {
+            first_char[n] = first_char[lastCode];
+            if (code == n)
+                last_char[n] = first_char[n];
+            else
+                last_char[n] = first_char[code];
+            prev_link[n] = lastCode;
+
+            ++n;
+            if (n >= (1 << bits) && bits < 12)
+                ++bits;
+        }
+
+        var tmpstart = 4096;
+        for (var link = code; link >= 0; link = prev_link[link])
+            tmp[--tmpstart] = last_char[link];
+
+        while (tmpstart != 4096)
+        {
+            let c = tmp[tmpstart++]
+            if (byte2) {
+                if (c == 0) {
+                    last = 0x90;
+                    if (!dstlen--)
+                        return null;
+                    dstd[dst++] = 0x90;
+                } else {
+                    let count = c - 1;
+                    if (dstlen < count)
+                        return null;
+                    dstlen -= count;
+                    while(count--)
+                        dstd[dst++] = last;
+                }
+                byte2 = false;
+            } else {
+                if (c == 0x90)
+                    byte2 = true;
+                else {
+                    last = c;
+                    if (!dstlen--)
+                        return false;
+                    dstd[dst++] = c;
+                }
+            }
+        }
+        lastCode = code;
+    }
+    return dstd;
+}
+
+function arc_extract(id,pos)
+{
+    var file = get_file(id);
+    function extract(pos)
+    {
+        var f = file.arc[pos];
+        var d = file.data.slice(pos,pos + f.compressed_size);
+        switch (f.method) {
+            case 3: d = dearc_3(d,f.compressed_size,f.original_size); break;
+            case 8: d = dearc_8(d,f.compressed_size,f.original_size); break;
+        }
+        load_one(f.name,get_ext(f.name,d),d);
+    }
+    if (pos == -1)
+        file.arc.forEach(a => extract(a.pos));
+    else
+        extract(pos);
+    refresh_containers();
+}
+
+function show_arc(f)
+{
+    var d = f.data;
+    var files = [];
+    var txt = [];
+    var sel = [];
+    var i;
+
+    var _methods = [
+        "End of archive marker",
+        "unpacked (obsolete) - ARC 1.0 ?",
+        "unpacked - ARC 3.1",
+        "packed (RLE encoding)",
+        "squeezed (after packing)",
+        "crunched (obsolete) - ARC 4.0",
+        "crunched (after packing) (obsolete) - ARC 4.1",
+        "crunched (after packing, using faster hash algorithm) - ARC 4.6",
+        "crunched (after packing, using dynamic LZW variations) - ARC 5.0",
+        "Squashed c/o Phil Katz (no packing) (var. on crunching)"];
+
+    var i = 0;
+    f.arc = [];
+    var count = 0;
+    while (i < d.length) {
+        if (d[i+0] != 0x1A)
+            break;
+        var method = d[i+1];
+        if (!method)
+            break;  // end of archive is 0x1A 0x00
+
+        var name = '';
+        for (var j = 0; d[i+2+j] && j < 12; j++)
+            name += String.fromCharCode(d[i+2+j]);
+
+        var file = {
+            method : method,
+            name : name,
+            compressed_size: le32(d,i+15),
+            date: le32(d,i+19),
+            crc: le16(d,i+23),
+            original_size: le32(d,i+25),
+            pos: i + 29
+        }
+        f.arc[file.pos] = file;
+        sel.push(`; ${file.name} <button style="float:right" onclick='arc_extract(${f.id},${file.pos})'>Extract</button>`);
+        sel.push(`; ${file.original_size} bytes (${file.compressed_size} compressed)`);
+        sel.push("");
+
+        txt.push("; " + file.name);
+        txt.push("; " + _methods[method] + ", " + file.compressed_size + " -> " + file.original_size);
+        txt.push("");
+        txt.push(hex_dump(d,i+29,file.compressed_size,4));
+        txt.push("");
+
+        i += 29 + file.compressed_size;
+        count++;
+    }
+    sel.unshift(`; ${f.name} archive contains ${count} files<button style="float:right" onclick='arc_extract(${f.id},-1)'>Extract All</button>\n\n`);
+    sel.push("");
+
+    render_file(f);
+    _h("#show",sel.join("\n") + txt.join("\n"));
+}
+
+//===================================================================================================
+//===================================================================================================
 // dump atr raw data
-function show_atr(f)
+
+function show_atr(f,rawmode)
 {
     var atr = f.atr;
     var d = atr.d;
     var txt = [];
+
+    // just the raw sectors
+    if (rawmode) {
+        var n = 0;
+        for (;;)
+        {
+            var size = n < 3 ? 128 : atr.sector_size;
+            var offset = atr.sector_offset(n+1);
+            if (offset >= (atr.size+16))
+                break;
+            var zero = is_zero(d,offset,size);
+            txt.push("; Sector " + n + (zero ? " (" + size + " zeros)":""));
+
+            if (!zero)
+                txt.push(hex_dump(d,offset,size,4));
+            txt.push("");
+            n++;
+        }
+        render_file(f);
+        _h("#show",txt.join("\n"));
+        return;
+    }
 
     function pad_hex(n)
     {
@@ -4141,6 +4858,7 @@ function show_atr(f)
     }
 
     // Check validity of TOC
+    var sparta = atr.sparta;
     var sc = (atr.size - 3*128)/atr.sector_size + 3;
     var vtoc = atr.sector_offset(360);
     var valid = d[vtoc] == 2;
@@ -4164,19 +4882,38 @@ function show_atr(f)
     }
 
     txt.push(`; Image has ${sc} ${atr.sector_size} byte sectors - ` + density);
-    txt.push(valid ? `; ${unused} sectors free of ${total} total available` : `; VTOC is invalid`);
-    txt.push("; Jump to <a id='BOOT' href='#VTOC'>VTOC</a>");
-    if (vtoc2)
-        txt.push("; Jump to <a id='BOOT' href='#VTOC2'>VTOC2</a>");
-    txt.push("; Jump to <a href='#DIR'>Directory</a>");
+    if (sparta) {
+        // something
+    } else {
+        txt.push(valid ? `; ${unused} sectors free of ${total} total available` : `; VTOC is invalid`);
+        txt.push("; Jump to <a id='BOOT' href='#VTOC'>VTOC</a>");
+        if (vtoc2)
+            txt.push("; Jump to <a id='BOOT' href='#VTOC2'>VTOC2</a>");
+        txt.push("; Jump to <a href='#DIR'>Directory</a>");
+    }
     txt.push("");
 
     // Show boot sectors, disassemble them
+
     txt.push("; boot record");
     var k = Object.keys(_br);
-    for (var i = 0; i < k.length; i++)
+    for (var i = 0; i < (sparta ? 5 : k.length); i++)
         txt.push("; " + pad_hex(_br[k[i]]) + " " + k[i]);
+
+    if (sparta) {
+        txt.push("");
+        txt.push("; SpartaDOS");
+        var br = sparta.boot;
+        var k = Object.keys(br);
+        for (var i = 0; i < k.length; i++) {
+            if (k[i] == 'volume_name')
+                txt.push(`;      ${k[i]} '${br[k[i]]}'`);
+            else
+                txt.push("; " + pad_hex(br[k[i]]) + " " + k[i]);
+        }
+    }
     txt.push("");
+
     var size = atr.sector_offset(_br.BRCNT+1);    // 0 based
     var boot = d.slice(16,size);
     var cont = _br.BCONT - _br.BLDADDR;
@@ -4185,7 +4922,7 @@ function show_atr(f)
 
     // Scan files/sectors
     // TODO: Broken links, deleted files
-    var dirs = atr.get_dir(i);
+    var dirs = atr.get_dir();
     var sectors = [];
     dirs.forEach(dir => dir.sectors.forEach(s => {sectors[s.sector] = {dir:dir,sector:s}}));
     console.log(dirs);
@@ -4248,9 +4985,14 @@ function show(id)
             return;
         }
 
+        if (f.ext == "arc") {
+            show_arc(f);
+            return;
+        }
+
         var e = _exts[f.ext];
         if (e && e.is_disk) {
-            show_atr(f);
+            show_atr(f,f.ext == "dsk");
             return;
         }
         if (e && e.is_img) {
@@ -4311,29 +5053,35 @@ function close_container(id)
     render_state(_containers);
 }
 
+function load_one(name,ext,a,img)
+{
+    var f = {name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7,img:img};
+    var i = name.lastIndexOf(".");
+    var ext83 = ext;
+    if (i != -1) {
+        ext83 = name.substr(i+1);
+        name = name.substr(0,i);
+    }
+    f.name83 = name.substr(0,8);
+    while (f.name83.length < 8)
+        f.name83 += ' ';
+    f.name83 += ext83.toUpperCase().substr(0,3);
+    _containers.unshift({name:f.name,ext:ext,data:a,files:[f],id:_container_id++});         // single file
+}
+
 function load_data(name,a,img)
 {
     var ext = get_ext(name,a,img);
-	if ((ext != "atr") && (ext != "atx") && (ext != "pro")) {        // not an atr file
-        var f = {name:name,ext:ext,data:a,id:_id++,total:(a.length+127)>>7,img:img};
-        var i = name.lastIndexOf(".");
-        var ext83 = ext;
-        if (i != -1) {
-            ext83 = name.substr(i+1);
-            name = name.substr(0,i);
-        }
-        f.name83 = name.substr(0,8);
-        while (f.name83.length < 8)
-            f.name83 += ' ';
-        f.name83 += ext83.toUpperCase().substr(0,3);
-        _containers.unshift({name:f.name,ext:ext,data:a,files:[f],id:_container_id++});         // single file
+    var e = _exts[ext];
+	if (!e || !e.is_disk) {        // not an atr file
+        load_one(name,ext,a,img);
 	} else {
         var atr = new ATR(a,name);
         var dir = atr.get_dir();
         var files = [];
         dir.forEach(f => {
             if (f.valid) {
-                var file = {name:f.name,name83:f.name83,id:_id++,total:f.total,flags:f.flags,recovered:f.recovered};
+                var file = {name:f.name,name83:f.name83,id:_id++,total:f.total,flags:f.flags,recovered:f.recovered,is_dir:f.is_dir};
                 file.data = atr.read(f);
                 if (f.errors) {
                     console.log("Error reading file " + f.name);
@@ -4385,13 +5133,14 @@ function refresh_containers()
 }
 
 // #153382 - BG 0x94
-var _cursorX = 0;
-var _cursorY = 0;
+
+function open()
+{
+    _q("#fe").click();
+}
+
 function load()
 {
-    console.log('#'+hex(atari_palette_rgb[0x94],6));
-    console.log('#'+hex(atari_palette_rgb[0x9E],6));
-
     drop_init(_q("#toc"),
         (file,ab) => {
             if (file.type.indexOf("image")!= -1)
@@ -4407,28 +5156,25 @@ function load()
     _fcanvas = get_font(_font);
 
     document.body.onkeyup = function (e) {
-        if (e.key == "Alt")
-            render_kb(0);
     }
 
-    document.onmousemove = function(e) {
-        _cursorX = e.pageX;
-        _cursorY = e.pageY;
-    }
+    document.onselectionchange = selection_change;
 
     document.body.onkeydown = function (e) {
-        if (e.key == "Alt")
-            render_kb(1);
-        else if (e.ctrlKey) {
+        if (e.ctrlKey && e.shiftKey) {
             switch (e.key) {
                 case 'o':
                 case 'O':
-                    _q("#fe").click();
+                    open();
                     break;  // open a file....
                 case 'h':
                 case 'H':
                     toggle_hex();
                     break;  // toggle hex display
+                case 'k':
+                case 'K':
+                    toggle_kb();
+                    break;  // toggle keyboard
             }
         }
     };
@@ -4532,7 +5278,7 @@ function render_state(m)
     }
 
     m.forEach(container => {
-        container.files.forEach(file => draw_line(`#canvas${file.id}`,info(file),file.recovered));
+        container.files.forEach(file => draw_line(`#canvas${file.id}`,info(file),file.recovered,file.is_dir));
     });
 
     // show supported file types
@@ -4581,42 +5327,75 @@ function render_file(f)
         </div>
         <div id="file">
             <div>
-                ${pre ? `<pre id="show"></pre>` : ''}
-                ${img ? `<canvas id="show"></canvas>` : ''}
-                ${txt ? `<textarea class='atari' id='atari_text'></textarea>` : ''}
+                ${pre ? `<pre id='show'></pre>` : ''}
+                ${img ? `<canvas id='show'></canvas>` : ''}
+                ${txt ? `<div contenteditable='true' spellcheck='false' class='atari' id='atari_text'></div>` : ''}
             </div>
         </div>`
     );
 }
 
+var _keyboard;
 function render_kb(vis)
 {
     var kb = _q(".keyboard");
-    vis = vis && _q("#atari_text");
-    if (!vis) {
-        kb.style.display = "none";
-        return;
+    if (!_keyboard) {
+        var s = `<div>`;
+        for (var y = 0; y < 16; y++) {
+            s += '<div>';
+            for (var x = 0; x < 16; x++)
+                s += '<span>'+String.fromCharCode(x + y*16 + 0xE000)+'</span>';
+            s += '</div>';
+        }
+        kb.innerHTML = s;
+        kb.onclick = e => keyboard(e.target.innerText);
+        _keyboard = kb;
     }
 
-    var s = `<div style="border:solid #AAA 1px">`;
-    for (var y = 0; y < 16; y++) {
-        s += '<div>';
-        for (var x = 0; x < 16; x++)
-            s += '<span>'+String.fromCharCode(x + y*16 + 0xE000)+'</span>';
-        s += '</div>';
-    }
-    s += `<div class='keyboard_invert'>Invert Selection</div></div>`;
+    //vis = vis && _q("#atari_text");
+    kb.style.display = vis ? "block" : "none";
+    keyboard();
+}
 
-    kb.onclick = (evt) => keyboard(evt.target.innerText);
-    kb.innerHTML = s;
-    kb.style.left = (_cursorX-16*8) + "px";
-    kb.style.top = (_cursorY-16*8) + "px";
-    kb.style.display = "block";
+function toggle_kb()
+{
+    render_kb(_q(".keyboard").style.display != "block");
+}
+
+function set_tool(name,v)
+{
+    set_class(_q("#"+name),"dimmed",!v);
+}
+
+function floater(evt)
+{
+    var t = evt.target.innerText;
+    if (t == String.fromCharCode(0xE000))
+        toggle_kb();
+    else if (t == "I")
+        invert_selection();
+    else if (t == "D")
+        disassemble_selection();
+    else if (t == "O")
+        open();
+    else if (t == "H")
+        toggle_hex();
 }
 
 </script>
 <body>
-<div class="keyboard"></div>
+<div class="floater atari keyboard"></div>
+<div class="floater disassembly" hidden>
+    <span class='close-icon' onclick='this.parentElement.hidden = true'></span>
+    <pre id='disassembly'></pre>
+</div>
+<div class="floater atari tools" onclick='floater(event)' id="tools">
+    <span title='ATASCII Keyboard'>&#xE000</span><br/>
+    <span title='Open File'>O</span><br/>
+    <span title='Toggle Hex View'>H</span><br/>
+    <span id="I" class='dimmed' title='Invert Selection'>I</span><br/>
+    <span id="D" class='dimmed' title='Disassemble Selection'>D</span><br/>
+</div>
 <header>
 <h2>ATR Image Explorer</h2>
 <br />
@@ -4630,7 +5409,7 @@ function render_kb(vis)
     <a href="https://github.com/rossumur/esp_8_bit">https://github.com/rossumur/esp_8_bit</a><br/><br/>
     <i><b>Ctrl+O</b> opens File Dialog</i><br/>
     <i><b>Ctrl+H</b> toggles Hex View</i><br/>
-    <i><b>Option</b> opens Keyboard in Editor</i><br/>
+    <i><b>Shift+Click</b> opens Keyboard in Editor</i><br/>
 </p>
 <input type="file" id="fe" multiple style="display:none">
 </nav>
