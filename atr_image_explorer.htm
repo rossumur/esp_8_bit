@@ -144,12 +144,12 @@ td {
     padding: 4px;
     margin: 4px;
     font-size: small;
-    width:336px;
+    width:600px;
 }
 .exts b {
     display: inline-block;
     margin-right: 16px;
-    width : 100px;
+    width : 140px;
     text-align:right;
 }
 .open {
@@ -273,6 +273,16 @@ pre data {
     overflow: scroll;
     background: #EEE;
 }
+
+.draggable {
+    width: 100%;
+    padding: 4px 8px;
+    background: #CCF;
+    border: solid 1px #CCC;
+    font-size: small;
+    font-weight: bold;
+}
+
 .tools {
     width: 20px;
     height: 84px;
@@ -711,38 +721,6 @@ function yiq2atari(y,i,q)
     return cr;
 }
 
-function tst()
-{
-    for (var i = 0; i < 256; i++) {
-        var yiq = atari2yiq(i);
-        var c = yiq2atari(yiq.y,yiq.i,yiq.q);
-        console.log(i + "->" + c);
-        console.log(yiq);
-    }
-}
-//tst();
-
-// difference measure between two atari color indexes
-var _chroma_diff;
-function atari_distance(a,b)
-{
-    var luma = (a & 0xF) - (b & 0xF);
-    luma = luma*luma;
-    if (!_chroma_diff) {
-        _chroma_diff = new Int16Array(256);
-        for (var i = 0; i < 256; i++) {
-            var c0 = ((i & 0xF) << 4) | 7;
-            var c1 = ((i >> 4) << 4) | 7;
-            var p0 = atari2yiq(c0);
-            var p1 = atari2yiq(c1);
-            var di = p0.i - p1.i;
-            var dq = p0.q - p1.q;
-            _chroma_diff[i] = di*di + dq*dq;
-        }
-    }
-    return _chroma_diff[(a & 0xF0) | (b >> 4)] + luma;
-}
-
 function yiq_distance(a,b)
 {
     var dy = a.y-b.y;
@@ -762,31 +740,101 @@ function lfsr()
 }
 
 // mode 0 = Atkinson Dither
-// mode 1 = noise
+// mode 1 = Floyd Steinberg
+// mode 2 = noise
+// mode 3 = ordered
+// mode 4 = No diffusion
+
+var _ordered8x8 = new Uint8Array([
+     0, 32,  8, 40,  2, 34, 10, 42,
+    48, 16, 56, 24, 50, 18, 58, 26,
+    12, 44,  4, 36, 14, 46,  6, 38,
+    60, 28, 52, 20, 62, 30, 54, 22,
+     3, 35, 11, 43,  1, 33,  9, 41,
+    51, 19, 59, 27, 49, 17, 57, 25,
+    15, 47,  7, 39, 13, 45,  5, 37,
+    63, 31, 55, 23, 61, 29, 53, 21
+]);
+
+var _ordered16x16 = new Uint8Array([
+      0,192, 48,240, 12,204, 60,252,  3,195, 51,243, 15,207, 63,255,
+    128, 64,176,112,140, 76,188,124,131, 67,179,115,143, 79,191,127,
+     32,224, 16,208, 44,236, 28,220, 35,227, 19,211, 47,239, 31,223,
+    160, 96,144, 80,172,108,156, 92,163, 99,147, 83,175,111,159, 95,
+      8,200, 56,248,  4,196, 52,244, 11,203, 59,251,  7,199, 55,247,
+    136, 72,184,120,132, 68,180,116,139, 75,187,123,135, 71,183,119,
+     40,232, 24,216, 36,228, 20,212, 43,235, 27,219, 39,231, 23,215,
+    168,104,152, 88,164,100,148, 84,171,107,155, 91,167,103,151, 87,
+      2,194, 50,242, 14,206, 62,254,  1,193, 49,241, 13,205, 61,253,
+    130, 66,178,114,142, 78,190,126,129, 65,177,113,141, 77,189,125,
+     34,226, 18,210, 46,238, 30,222, 33,225, 17,209, 45,237, 29,221,
+    162, 98,146, 82,174,110,158, 94,161, 97,145, 81,173,109,157, 93,
+     10,202, 58,250,  6,198, 54,246,  9,201, 57,249,  5,197, 53,245,
+    138, 74,186,122,134, 70,182,118,137, 73,185,121,133, 69,181,117,
+     42,234, 26,218, 38,230, 22,214, 41,233, 25,217, 37,229, 21,213,
+    170,106,154, 90,166,102,150, 86,169,105,153, 89,165,101,149, 85
+]);
+
 function dither_image(pix,f,pal,mode)
 {
+    mode = mode || 0;
     var d = pix.data;
     var buf = new Uint8Array(3);
     var errs = new Int16Array(3);
     var dst = new Uint8Array(pix.width*pix.height);
+    var distance = _radios["distance"].value;
+    var dscale = pal.length == 2 ? 0.75 : 0.25;
 
     function get_index(src,p)
     {
         var mind = -1;
         var merr = 0xFFFFFF;
-        var p0 = rgb2atari(src[p+0],src[p+1],src[p+2]); // index of pixel
-        for (var i = 0; i < pal.length; i++) {
-            var err = atari_distance(p0,pal[i]);  // indexed distance measure
-            if (err < merr) {
-                merr = err;
-                mind = i;
+
+        if (distance == 0)  // RGB distnance measure
+        {
+            var r = src[p+0];
+            var g = src[p+1];
+            var b = src[p+2];
+            var e;
+            for (var i = 0; i < pal.length; i++) {
+                var err = 0;
+                var c = atari_palette_rgb[pal[i]];
+                e = r - ((c >> 16) & 0xFF);
+                err += e*e;
+                e = g - ((c >> 8) & 0xFF);
+                err += e*e;
+                e = b - (c & 0xFF);
+                err += e*e;
+                if (err < merr) {
+                    merr = err;
+                    mind = i;
+                }
+            }
+        } else {
+            var pyiq= rgb2yiq(src[p+0],src[p+1],src[p+2]);  // yiq + y only
+            var e;
+            for (var i = 0; i < pal.length; i++) {
+                var err = 0;
+                var yiq = atari2yiq(pal[i]);
+                e = yiq.y - pyiq.y;
+                err += e*e*2;
+                if (distance == 1) {        // include chroma
+                    e = yiq.i - pyiq.i;
+                    err += e*e;
+                    e = yiq.q - pyiq.q;
+                    err += e*e;
+                }
+                if (err < merr) {
+                    merr = err;
+                    mind = i;
+                }
             }
         }
+
         var c = atari_palette_rgb[pal[mind]];
-        var scale = 6;
-        errs[0] = (src[p+0] - ((c >> 16) & 0xFF))/scale;   // save error in RGB
-        errs[1] = (src[p+1] - ((c >> 8) & 0xFF))/scale;
-        errs[2] = (src[p+2] - ((c >> 0) & 0xFF))/scale;
+        errs[0] = (src[p+0] - ((c >> 16) & 0xFF));   // save error in RGB
+        errs[1] = (src[p+1] - ((c >> 8) & 0xFF));
+        errs[2] = (src[p+2] - ((c >> 0) & 0xFF));
         return pal[mind];    // closest index
     }
 
@@ -798,8 +846,7 @@ function dither_image(pix,f,pal,mode)
 
     function rnd()
     {
-        var mask = 0x7F;
-        return (lfsr() & mask)-mask/2;
+        return ((lfsr() & 0xFF)-128)*dscale;
     }
 
     function noisy(i)
@@ -809,11 +856,25 @@ function dither_image(pix,f,pal,mode)
         buf[2] = pin(d[i+2] + rnd());
     }
 
-    function add_err(x,y) {
+    function ordered(i,x,y)
+    {
+        function o(n) {
+            return (_ordered16x16[n]-128)*dscale;
+        }
+        var j = ((x & 0xF) << 4) | (y & 0xF);
+        buf[0] = pin(d[i+0] + o(j));
+        buf[1] = pin(d[i+1] + o(j));
+        buf[2] = pin(d[i+2] + o(j));
+    }
+
+    function add_err(x,y,scale) {
+        scale = scale || 1/6;   // Atkinson
+        if (x < 0 || x >= pix.width || y < 0 || y >= pix.height)
+            return;
         var i = (x + y*pix.width)*4;
-        d[i+0] = pin(d[i+0]+errs[0]);
-        d[i+1] = pin(d[i+1]+errs[1]);
-        d[i+2] = pin(d[i+2]+errs[2]);
+        d[i+0] = pin(d[i+0]+errs[0]*scale);
+        d[i+1] = pin(d[i+1]+errs[1]*scale);
+        d[i+2] = pin(d[i+2]+errs[2]*scale);
     }
 
     var i = 0;
@@ -822,7 +883,7 @@ function dither_image(pix,f,pal,mode)
         for (var x = 0; x < pix.width; x++) {
             switch (mode) {
                 case 0:
-                    dst[i++] = get_index(d,row+x*4);
+                    dst[i++] = get_index(d,row+x*4);    // Atkinson
                     add_err(x+1,y+0);
                     add_err(x+2,y+0);
                     add_err(x-1,y+1);
@@ -830,9 +891,27 @@ function dither_image(pix,f,pal,mode)
                     add_err(x+1,y+1);
                     add_err(x+0,y+2);
                     break;
+
                 case 1:
+                    dst[i++] = get_index(d,row+x*4);    // Floyd Steinberg
+                    add_err(x+1,y+0,7/16);
+                    add_err(x-1,y+1,3/16);
+                    add_err(x+0,y+1,5/16);
+                    add_err(x+1,y+1,1/16);
+                    break;
+
+                case 2:
                     noisy(row+x*4);
                     dst[i++] = get_index(buf,0);
+                    break;
+
+                case 3: // ordered
+                    ordered(row+x*4,x,y);
+                    dst[i++] = get_index(buf,0);
+                    break;
+
+                case 4: // none
+                    dst[i++] = get_index(d,row+x*4);
                     break;
             }
         }
@@ -841,7 +920,45 @@ function dither_image(pix,f,pal,mode)
     return dst;
 }
 
+function pack_img(indexes,pal,ext)
+{
+    var dst = 0;
+    var bpp = 2;
+    switch (ext)
+    {
+        case 'gr8':
+            bpp = 1;
+            break;
+        case 'gr9':
+        case 'g10':
+            bpp = 4;
+            break;
+    }
+    var ppb = 8/bpp;
+    var pal_len = pal ? pal.length : 0;
+    var d = new Uint8Array(indexes.length/ppb + pal_len);
+
+    for (var i = 0; i < indexes.length; ) {
+        var b = 0;
+        for (var j = 0; j < ppb; j++) {
+            b <<= bpp;
+            if (pal_len)
+                b |= pal.indexOf(indexes[i++]);
+            else
+                b |= indexes[i++];
+        }
+        d[dst++] = b;
+    }
+    for (var i = 0; i < pal_len; i++)
+        d[dst++] = pal[i];
+    return d;
+}
+
 function convert_image(canvas,f,pal,reload) {
+
+    var dither = _radios["dither"].value;
+    var scheme = _radios["scheme"].value;
+
     var width = 320;
     var height = 192;
 
@@ -894,13 +1011,59 @@ function convert_image(canvas,f,pal,reload) {
     ctx.drawImage(f.img,0,0,img.width,src_height,(width-dst_width)/2,(height-dst_height)/2,dst_width,dst_height);
 
     var pix = ctx.getImageData(0,0,width,height);
-    if (pal_size && reload)
-        pal = kmeans(pix,pal_size,1);
-    
-    var indexed = dither_image(pix,f,pal,1);  // dither to atari palette
+
+    var mono = -1;
+    if (reload && pal_size) {
+        function monochrome(c) {
+            for (var i = 0; i < pal_size; i++)  // make a grey palette, will apply chroma later
+                pal[i] = i*15/(pal_size-1);
+            mono = c;
+        }
+        switch (scheme) {
+            case 0:
+                monochrome(0x00);   // grey
+                break;
+            case 1:     // red-green
+                switch (pal_size) {
+                    case 2: pal = [0x70,0xEA]; break;
+                    case 4: pal = [0x71,0x45,0xE9,0x0D]; break;
+                    case 9:
+                        break;
+                }
+                break;
+            case 2:      // random
+                for (var i = 0; i < pal.length; i++)
+                    pal[i] = lfsr() & 0xFF;
+                break;
+
+            case 3: // kmeans
+                pal = kmeans(pix,pal_size,scheme == 4);
+                break;
+
+            case 4: monochrome(0x40); break;
+            case 5: monochrome(0xD0); break;
+            case 6: monochrome(0x90); break;
+        }
+    }
+
+    // dither to atari palette
+    var indexed = dither_image(pix,f,pal,dither); 
+
+    // apply mono color if any
+    if (mono != -1) {
+        for (var i = 0; i < pal.length; i++)
+            pal[i] |= mono;
+        for (var i = 0; i < indexed.length; i++)
+            indexed[i] |= mono;
+    }
+
+    // pack into the appropriate format
+    f.packed_img = pack_img(indexed, pal_size ? pal : null,f.ext);
+
+    // turn it back into RGB to display
     var rgb = Uint32Array.from(indexed).map(i => atari_palette_rgb[i]);
     rgb2canvas(canvas,rgb,width,height,1);
-    return [320/canvas.width*2,192/canvas.height*2];
+    return {pal:pal,aspect:[320/canvas.width*2,192/canvas.height*2]};
 }
 
 // atari index color to canvas
@@ -1139,14 +1302,25 @@ function is_palettable(ext)
 
 function render_image(canvas,f)
 {
-    var def_palette = f.ext == "g10" ? [0,2,4,6,8,10,12,14,15] : [0,5,10,15];
+    var def_palette = [0,5,10,15];
+    switch (f.ext) {
+        case "gr8": def_palette = [0,15]; break;
+        case "g10": def_palette = [0,2,4,6,8,10,12,14,15]; break;
+    }
     var pal0 = _reload_palette ? def_palette.slice() : _palette.slice();
     var pal1 = _reload_palette ? def_palette.slice() : _palette.slice();
     var hip =  [0,0,2,4,6,8,10,12,14, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xE0];
     var multihip_pal = null;
 
-    if (f.img)
-        return convert_image(canvas,f,pal0,_reload_palette);
+    // We are rendering an image
+    if (f.img) {
+        var r = convert_image(canvas,f,pal0,_reload_palette);
+        if (_reload_palette) {
+            _palette = r.pal.slice();
+            redraw_palette();
+        }
+        return r.aspect;
+    }
 
     var data = f.data;
     var ext = f.ext;
@@ -1580,7 +1754,12 @@ function radio_click(name,n)
 function radio_changed(name,v)
 {
     switch (name) {
-        case "layout":refresh(); break;
+        case "layout":
+        case "dither":
+        case "scheme":
+        case "distance":
+            refresh();
+            break;
     }
 }
 
@@ -1690,6 +1869,7 @@ function disassemble_selection()
     for (var i = 0; i < txt.length; i++)
         asm.push(txt.charCodeAt(i)&0xFF);
     var dis = _q(".disassembly");
+    draggable(dis,_shown.name + " disassembly");
     _h("#disassembly",xex_dump("asm",asm,0,asm.length));
 
     var r = _gs().getRangeAt(0).getBoundingClientRect();
@@ -3849,8 +4029,9 @@ function get_ext(name,a,img)
             return ext;
     }
 
-    if (img)
-        return "gr8";
+    if (img) {
+        return img.width == 320 ? "gr8" : "gr7";
+    }
 
     var sig = le16(a,0);
     if (sig == 0x296)
@@ -3880,8 +4061,13 @@ function get_ext(name,a,img)
     if (sig == 0x081A || sig == 0x041A)
         return "arc";
 
-    if (ataribasic(a,0,a.length))
-        return "bas";
+    try {
+        if (ataribasic(a,0,a.length))
+            return "bas";
+    }
+    catch (err) {
+        console.log(err);   // guess it wasn't basic
+    }
 
     var s='';
     for (var i = 0; i < a.length; i++)
@@ -3913,6 +4099,8 @@ function save(as_lst)
         if (n.substr(n.length-4).toLowerCase() == ".bas")
             n = n.substr(0,n.length-4);     // trim ".BAS"
         save_bytes(n+".LST",data);
+    } else if (f.packed_img) {
+        save_bytes(f.name+"."+f.ext,f.packed_img);
     } else
         save_bytes(f.name,f.data);
 }
@@ -4005,12 +4193,25 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
 
         segs.forEach(seg => {
             s = "; code segment " + seg.len + " bytes at " + hex(seg.start,4) + ":" +  hex(seg.end,4);
-            if ((seg.len == 2) && (seg.start == 0x2E0 || seg.start == 0x2E2)) {
-                seg.addr = le16(a,seg.offset);
-                entry_points.push(seg.addr);
-                flags[seg.addr] = 0x80;
-                s += " -> " + (seg.start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
+
+            // note initialization and run addresses
+            switch (seg.start) {
+                case 0x2E0:
+                    flags[seg.run = le16(a,seg.offset)] = 0x80;
+                    if (seg.len == 4) {
+                        flags[seg.initialize = le16(a,seg.offset+2)] = 0x80;
+                        seg.note = " -> initialize at " + hex(seg.initialize,4) + ", run at " + hex(seg.run,4);
+                    } else
+                        seg.note = " -> run at " + hex(seg.run,4);
+                    break;
+                case 0x2E2:
+                    flags[seg.initialize = le16(a,seg.offset)] = 0x80;
+                    seg.note = " -> initialize at " + hex(seg.initialize,4);
+                    break;
             }
+            if (seg.note)
+                s += seg.note;
+
             lines.push(s);
         });
         lines.push("");
@@ -4018,7 +4219,7 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
         // Do the disassembly
         var asms = {};
         segs.forEach(seg => {
-            if (!seg.addr)
+            if (!seg.note)
                 asms[seg.offset] = disassemble(seg.start,a,seg.offset,seg.end+1 - seg.start,ram,flags);  // disassemble segment
         });
 
@@ -4026,8 +4227,8 @@ function xex_dump(name,a,i,len,expect_header,org,entry)
         segs.forEach(seg => {
             lines.push("; ===================================================");
             s = "; code segment " + seg.len + " bytes at " + hex(seg.start,4) + ":" +  hex(seg.end,4);
-            if (seg.addr)
-                s += " -> " + (seg.start == 0x2E0 ? "run":"initialize") + " at " + hex(seg.addr,4);
+            if (seg.note)
+                s += seg.note;
             lines.push(s);
             lines.push('');
             if (asms[seg.offset])
@@ -5067,6 +5268,7 @@ function load_one(name,ext,a,img)
         f.name83 += ' ';
     f.name83 += ext83.toUpperCase().substr(0,3);
     _containers.unshift({name:f.name,ext:ext,data:a,files:[f],id:_container_id++});         // single file
+    return f;
 }
 
 function load_data(name,a,img)
@@ -5074,7 +5276,7 @@ function load_data(name,a,img)
     var ext = get_ext(name,a,img);
     var e = _exts[ext];
 	if (!e || !e.is_disk) {        // not an atr file
-        load_one(name,ext,a,img);
+        return load_one(name,ext,a,img);
 	} else {
         var atr = new ATR(a,name);
         var dir = atr.get_dir();
@@ -5116,7 +5318,7 @@ function flush_images()
         img.src = url;
         img.hidden = true;
         img.onload = (evt) => {
-            load_data(f.file.name,f.data,img);
+            load_data(f.file.name,f.data,img).edit_img = 1;
             refresh_containers();
             document.body.removeChild(img);
         }
@@ -5221,7 +5423,7 @@ function palette(colors)
     function atari256(c) {
         var s = [];
         for (var i = 0; i < 256; i++)
-            s.push(`<div class='acolor' onclick='pick_click(${c},${i})' style='background:${atari2css(i)}'></div>`);
+            s.push(`<div class='acolor' title='${hex(i)}' onclick='pick_click(${c},${i})' style='background:${atari2css(i)}'></div>`);
         return s.join("");
     }
     var s = [];
@@ -5235,6 +5437,16 @@ function palette(colors)
         );
     }
     return s.join("");
+}
+
+function refresh_image_controls(f)
+{
+    _h("#image_controls",`
+    <div class='exts' style="padding:8px">
+        <div><b>dither</b><span class='radio'>${radio_init('dither',['atkinson','floyd-steinberg','noise','ordered','none'])}</span><div><br/>
+        <div><b>scheme</b><span class='radio'>${radio_init('scheme',['grey','red-green','random','kmeans','red','green','blue'])}</span><div><br/>
+        <div><b>distance</b><span class='radio'>${radio_init('distance',['rgb','yiq','y'])}</span><div>
+    </div>`);
 }
 
 function render_state(m)
@@ -5331,8 +5543,11 @@ function render_file(f)
                 ${img ? `<canvas id='show'></canvas>` : ''}
                 ${txt ? `<div contenteditable='true' spellcheck='false' class='atari' id='atari_text'></div>` : ''}
             </div>
+            <div id="image_controls"></div>
         </div>`
     );
+    if (f.edit_img)
+        refresh_image_controls(f);
 }
 
 var _keyboard;
@@ -5382,11 +5597,37 @@ function floater(evt)
         toggle_hex();
 }
 
+function draggable(el,name)
+{
+    var x0,y0;
+    el.querySelector('.draggable').innerText = name;
+    el.onmousedown = (e) => {
+        e.preventDefault();
+        x0 = e.clientX;
+        y0 = e.clientY;
+        document.onmouseup = () => {
+            document.onmouseup = null;
+            document.onmousemove = null;
+        }
+        document.onmousemove = (e) => {
+            e.preventDefault();
+            var x = x0 - e.clientX;
+            var y = y0 - e.clientY;
+            x0 = e.clientX;
+            y0 = e.clientY;
+            el.style.left = (el.offsetLeft - x) + "px";
+            el.style.top = (el.offsetTop - y) + "px";
+        }
+    }
+}
+
 </script>
 <body>
 <div class="floater atari keyboard"></div>
 <div class="floater disassembly" hidden>
     <span class='close-icon' onclick='this.parentElement.hidden = true'></span>
+    <div class='draggable'>
+    </div>
     <pre id='disassembly'></pre>
 </div>
 <div class="floater atari tools" onclick='floater(event)' id="tools">
