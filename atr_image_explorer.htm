@@ -120,6 +120,7 @@ td {
     background-color:red;
 }
 .radio {
+    user-select: none;
     cursor: pointer;
     font-size: small;
     height:16px;
@@ -523,6 +524,178 @@ function get_font(src,palette,one_bit)
 
 //===================================================================================================
 //===================================================================================================
+
+class Octree
+{
+    constructor(bits)
+    {
+        this.leaves = 0;
+        this.count = 0;
+        this.leaf_level = bits || 4;
+    }
+
+    insert(node,color,level)
+    {
+        var level;
+        if (!node) {
+            node = {
+                level:level,
+                n:0,
+                red:0,
+                green:0,
+                blue:0,
+            }
+            if (level < this.leaf_level)
+                node.child = [];
+            else
+                this.leaves++;
+        }
+        node.n++;
+        node.red +=   (color >> 16) & 0xFF;
+        node.green += (color >> 8) & 0xFF;
+        node.blue +=  color & 0xFF;
+        if (node.child)
+        {
+            var k = this.key(color,level);
+            node.child[k] = this.insert(node.child[k],color,level+1);
+        }
+        return node;
+    }
+
+    key(color,level)
+    {
+        var k = 0;
+        var m = 0x80 >> level;
+        if ((color >> 16) & m)  k |= 0x04;
+        if ((color >> 8) & m)   k |= 0x02;
+        if (color & m)          k |= 0x01;
+        return k
+    }
+
+    color(node)
+    {
+        var r = node.red/node.n | 0;
+        var g = node.green/node.n | 0;
+        var b = node.blue/node.n | 0;
+        return {n:node.n,color:((r << 16) | (g << 8) | b)};
+    }
+
+    add(color)
+    {
+        this.root = this.insert(this.root,color,0);
+        this.count++;
+    }
+
+    scan(node,level,list) {
+        if (node.level == level)
+        {
+            list.push(node);
+            return;
+        }
+        if (node.child)
+            node.child.forEach(c => this.scan(c,level,list));
+    }
+
+    finalize(count)
+    {
+        var pal;
+        var level = 0;
+        do {
+            pal = [];
+            this.scan(this.root,level++,pal);   // scan into levels until we get enough colors
+        } while (pal.length < count);
+        console.log(pal);
+        pal.sort((a,b) => b.n - a.n);
+        if (pal.length >= count)
+            pal.length = count;
+        return pal.map(node => this.color(node));
+    }
+}
+
+function octree(pix,count,gray)
+{
+    var d = pix.data;
+    var q = new Octree();
+    for (var i = 0; i < pix.width*pix.height*4; i += 4) {
+        var r = d[i];
+        var g = d[i+1];
+        var b = d[i+2];
+        if (gray)
+            r = g = b = (r*0.29 + g*0.59 + b*0.12) | 0;
+        q.add((r << 16) | (g << 8) | b,0);
+    }
+
+    var pal = q.finalize(count);
+    return pal.map(c => rgb2atari((c.color >> 16) & 0xFF,(c.color >> 8) & 0xFF,c.color & 0xFF));
+}
+
+//===================================================================================================
+//===================================================================================================
+//  Kmeans for palettes
+
+function median_cut(pix,centroid_count)
+{
+    var sample_count = pix.width*pix.height;
+    var d = pix.data;
+    var index = new Uint32Array(sample_count);
+    for (var i = 0; i < sample_count; i++)
+        index[i] = i*4;
+    var slices = [index];
+
+    function cut(s)
+    {
+        var rgb = [];
+        for (var c = 0; c < 3; c++)
+            rgb.push({c:c,min:255,max:0,d:new Uint32Array(256)});
+        for (var i = 0; i < s.length; i++) {
+            for (var c = 0; c < 3; c++) {
+                var v = d[s[i]+c];
+                rgb[c].d[v]++;
+                rgb[c].min = Math.min(v,rgb[c].min);
+                rgb[c].max = Math.max(v,rgb[c].max);
+            }
+        }
+        rgb.sort((a,b) => (b.max-b.min) - (a.max-a.min));
+        var split = rgb[0];
+        var c = split.c;
+        var cut = (split.max+split.min)>>1;
+        console.log("Splitting " + ["red","green","blue"][c] + " at " + cut);
+        console.log(rgb);
+
+        var left = [];
+        var right = [];
+        for (var i = 0; i < s.length; i++) {
+            if (d[s[i]+c] < cut)
+                left.push(s[i]);
+            else
+                right.push(s[i]);
+        }
+        return [left,right];
+    }
+
+    while (slices.length < centroid_count) {
+        slices.sort((a,b) => b.length-a.length);
+        var split = cut(slices.shift());
+        slices = slices.concat(split);
+    }
+    console.log(slices);
+    var pal = [];
+    slices.forEach(s => {
+        var r = 0;
+        var g = 0;
+        var b = 0;
+        s.forEach(i => {
+            r += d[i];
+            g += d[i+1];
+            b += d[i+2];
+        });
+        pal.push(rgb2atari(r/s.length,g/s.length,b/s.length));
+    });
+    return pal;
+}
+
+//===================================================================================================
+//===================================================================================================
 //  Kmeans for palettes
 
 function kmeans(pix,centroid_count,gray)
@@ -533,10 +706,25 @@ function kmeans(pix,centroid_count,gray)
     for (var i = 0; i < sample_count; i++)
         samples.push(rgb2yiq(pix.data[i*4+0],pix.data[i*4+1],pix.data[i*4+2]));
 
-    // make grey centroids
-    var centroids = [];
-    for (var i = 0; i < centroid_count; i++)
-        centroids.push({color:{y:i*15/(centroid_count-1) | 0,i:0,q:0},avg:{y:0,i:0,q:0},err:0,count:0});
+    // kmeans++ centroid init
+    _lfsr = 0xACE1;
+    var rands = () => samples[lfsr() % sample_count];
+    var centroids = [{color:rands(),avg:{y:0,i:0,q:0},err:0,count:0}];
+    while (centroids.length < centroid_count) {
+        var maxe = 0;
+        var new_centroid;
+        for (var i = 0; i < 100; i++) {
+            var s = rands();
+            centroids.forEach(c => {
+                var e = yiq_distance(s,c.color);
+                if (e > maxe) {
+                    maxe = e;
+                    new_centroid = s;
+                }
+            });
+        }
+        centroids.push({color:new_centroid,avg:{y:0,i:0,q:0},err:0,count:0});
+    }
 
     // match samples to centroids
     var last = 0;
@@ -716,7 +904,7 @@ function yiq2atari(y,i,q)
         cr = 0;
     else
         cr = (cr+1) & 0xF;
-    cr = (cr << 4) | ((y/16 + 0.5)|0);
+    cr = (cr << 4) | ((y/16)|0);
     console.log("y:" + y + " i:" + i + " q:" + q + " -> " + hex(cr) + " sat:" + saturation);
     return cr;
 }
@@ -775,7 +963,7 @@ var _ordered16x16 = new Uint8Array([
     170,106,154, 90,166,102,150, 86,169,105,153, 89,165,101,149, 85
 ]);
 
-function dither_image(pix,f,pal,mode)
+function dither_image(pix,pal,mode)
 {
     mode = mode || 0;
     var d = pix.data;
@@ -858,13 +1046,11 @@ function dither_image(pix,f,pal,mode)
 
     function ordered(i,x,y)
     {
-        function o(n) {
-            return (_ordered16x16[n]-128)*dscale;
-        }
-        var j = ((x & 0xF) << 4) | (y & 0xF);
-        buf[0] = pin(d[i+0] + o(j));
-        buf[1] = pin(d[i+1] + o(j));
-        buf[2] = pin(d[i+2] + o(j));
+        var n = ((x & 0xF) << 4) | (y & 0xF);
+        n = (_ordered16x16[n]-128)*dscale;
+        buf[0] = pin(d[i+0] + n);
+        buf[1] = pin(d[i+1] + n);
+        buf[2] = pin(d[i+2] + n);
     }
 
     function add_err(x,y,scale) {
@@ -954,7 +1140,61 @@ function pack_img(indexes,pal,ext)
     return d;
 }
 
-function convert_image(canvas,f,pal,reload) {
+function raw_rgb(pix)
+{
+    var n = pix.width*pix.height;
+    var d = new Uint8Array(n*3);
+    if (1) {
+        var pal = [];
+        for (var i = 0; i < 256; i++)
+            pal.push(i);
+        var indexed = dither_image(pix,pal,1); 
+        for (var i = 0; i < n; i++) {
+            var c = atari_palette_rgb[indexed[i]];  // 
+            d[i*3+0] = (c >> 16) & 0xFF;
+            d[i*3+1] = (c >> 8) & 0xFF;
+            d[i*3+2] = c & 0xFF;
+        }
+    } else {
+        for (var i = 0; i < n; i++) {
+            d[i*3+0] = pix.data[i*4+0];
+            d[i*3+1] = pix.data[i*4+1];
+            d[i*3+2] = pix.data[i*4+2];
+        }
+    }
+    return d;
+}
+
+// raw rgb
+function show_rgb(canvas,f)
+{
+    canvas.width = f.data.length == (320*192*3) ? 320 : 160;
+    canvas.height = 192;
+    var ctx = canvas.getContext('2d');
+    var pix = ctx.getImageData(0,0,canvas.width,canvas.height);
+    var d = pix.data;
+    var s = f.data;
+    var n = canvas.width*canvas.height;
+    var p = {};
+    for (var i = 0; i < n; i++)
+    {
+        var r = d[i*4+0] = s[i*3+0];
+        var g = d[i*4+1] = s[i*3+1];
+        var b = d[i*4+2] = s[i*3+2];
+        d[i*4+3] = 0xFF;
+        p[(r << 16) | (g << 8) | b] = 1;
+    }
+    var pal = [];
+    Object.keys(p).forEach(c => pal.push(rgb2atari((c >> 16) | 0xFF,(c >> 8) & 0xFF, c & 0xFF)));
+    ctx.putImageData(pix,0,0);
+    return {pal:pal,aspect:[320/canvas.width*2,192/canvas.height*2]};
+}
+
+var _mono_cr = 0;
+function convert_image(canvas,f,pal,reload)
+{
+    //if (f.name.indexOf(".rgb") != -1)
+    //    return show_rgb(canvas,f);
 
     var dither = _radios["dither"].value;
     var scheme = _radios["scheme"].value;
@@ -1000,7 +1240,7 @@ function convert_image(canvas,f,pal,reload) {
             } else {
                 dst_width /= 4;
             }
-            pal_size = 9;
+            pal_size = f.ext == "g10" ? 9 : 0;
             break;
     }
 
@@ -1011,12 +1251,13 @@ function convert_image(canvas,f,pal,reload) {
     ctx.drawImage(f.img,0,0,img.width,src_height,(width-dst_width)/2,(height-dst_height)/2,dst_width,dst_height);
 
     var pix = ctx.getImageData(0,0,width,height);
+    //f.rgb = raw_rgb(pix);
 
     var mono = -1;
     if (reload && pal_size) {
         function monochrome(c) {
             for (var i = 0; i < pal_size; i++)  // make a grey palette, will apply chroma later
-                pal[i] = i*15/(pal_size-1);
+                pal[i] = (i*15/(pal_size-1)) | (_mono_cr << 4);
             mono = c;
         }
         switch (scheme) {
@@ -1025,9 +1266,9 @@ function convert_image(canvas,f,pal,reload) {
                 break;
             case 1:     // red-green
                 switch (pal_size) {
-                    case 2: pal = [0x70,0xEA]; break;
-                    case 4: pal = [0x71,0x45,0xE9,0x0D]; break;
-                    case 9:
+                    case 2: pal = [0x45,0xE9]; break;
+                    case 4: pal = [0x71,0x45,0xE9,0x0D]; break; // Technicolor 100
+                    case 9: pal = [0x71,0x45,0xE9,0x47,0xE7,0x07,0x49,0xE5,0x0D]; break; // Technicolor 100
                         break;
                 }
                 break;
@@ -1037,17 +1278,21 @@ function convert_image(canvas,f,pal,reload) {
                 break;
 
             case 3: // kmeans
-                pal = kmeans(pix,pal_size,scheme == 4);
+                pal = kmeans(pix,pal_size);
                 break;
 
-            case 4: monochrome(0x40); break;
-            case 5: monochrome(0xD0); break;
-            case 6: monochrome(0x90); break;
+            case 4: // octree
+                pal = octree(pix,pal_size);
+                break;
+
+            case 5:
+                pal = median_cut(pix,pal_size);
+                break;
         }
     }
 
     // dither to atari palette
-    var indexed = dither_image(pix,f,pal,dither); 
+    var indexed = dither_image(pix,pal,dither); 
 
     // apply mono color if any
     if (mono != -1) {
@@ -1313,6 +1558,7 @@ function render_image(canvas,f)
     var multihip_pal = null;
 
     // We are rendering an image
+  //  if (f.img || (f.name.indexOf(".rgb") != -1)) {
     if (f.img) {
         var r = convert_image(canvas,f,pal0,_reload_palette);
         if (_reload_palette) {
@@ -4100,7 +4346,10 @@ function save(as_lst)
             n = n.substr(0,n.length-4);     // trim ".BAS"
         save_bytes(n+".LST",data);
     } else if (f.packed_img) {
-        save_bytes(f.name+"."+f.ext,f.packed_img);
+        if (f.rgb)
+            save_bytes(f.name+".rgb",f.rgb);
+        else
+            save_bytes(f.name+"."+f.ext,f.packed_img);
     } else
         save_bytes(f.name,f.data);
 }
@@ -5417,9 +5666,9 @@ function pick_click(c,i)
     _reload_palette = 1;
 }
 
+var atari2css = (i) => '#'+hex(atari_palette_rgb[i],6);
 function palette(colors)
 {
-    var atari2css = (i) => '#'+hex(atari_palette_rgb[i],6);
     function atari256(c) {
         var s = [];
         for (var i = 0; i < 256; i++)
@@ -5430,7 +5679,7 @@ function palette(colors)
     for (var c = 0; c < colors.length; c++) {
         s.push(
             `<div class='dropdown'>
-                <div class='acolor' style='background:${atari2css(colors[c])}'>
+                <div class='acolor' title='${hex(colors[c])}' style='background:${atari2css(colors[c])}'>
                     <div class='dropdown-content'>${atari256(c)}</div>
                 </div>
             </div>`
@@ -5439,13 +5688,30 @@ function palette(colors)
     return s.join("");
 }
 
+function pick_mono(cr)
+{
+    _mono_cr = cr;
+    _radios["scheme"].value = 0;    // mono
+    refresh();
+}
+
 function refresh_image_controls(f)
 {
+    function monochrome()
+    {
+        var s = '';
+        for (var i = 0; i < 16; i++) {
+            var c = (i << 4) | 8;
+            s += `<div class='acolor' title='${hex(c)}' onclick='pick_mono(${c>>4})' style='background:${atari2css(c)}'></div>`;
+        }
+        return s;
+    }
     _h("#image_controls",`
     <div class='exts' style="padding:8px">
         <div><b>dither</b><span class='radio'>${radio_init('dither',['atkinson','floyd-steinberg','noise','ordered','none'])}</span><div><br/>
-        <div><b>scheme</b><span class='radio'>${radio_init('scheme',['grey','red-green','random','kmeans','red','green','blue'])}</span><div><br/>
-        <div><b>distance</b><span class='radio'>${radio_init('distance',['rgb','yiq','y'])}</span><div>
+        <div><b>scheme</b><span class='radio'>${radio_init('scheme',['monochrome','r:g','random','kmeans','octree','median'])}</span><div><br/>
+        <div><b>monochrome</b><span style='padding-left:12px'>${monochrome()}<span><div><br/>
+        <div><b>distance</b><span class='radio'>${radio_init('distance',['rgb','yiq','y'])}</span><div><br/>
     </div>`);
 }
 
