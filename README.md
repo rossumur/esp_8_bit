@@ -99,7 +99,7 @@ Based on [nofrendo](http://www.baisoku.org/).
 ## Sega Master System, Game Gear
 Based on [smsplus](https://www.bannister.org/software/sms.htm). Plays **.sms** (Sega Master System) and **.gg** (Game Gear) ROMs. Game Gear titles look a little funny in the middle of the screen, but Shinobi is still a masterpiece.
 
-This is the same emulator with which the brilliant and prolific [SpriteTM](https://esp32.com/viewtopic.php?f=2&t=53) first demostrated the power of the ESP31. [Jeroen](http://spritesmods.com/) is the person most responsible for making the ESP32 ecosystem a pleasure to work with.
+This is the same emulator with which the brilliant and prolific [SpriteTM](https://esp32.com/viewtopic.php?f=2&t=53) first demostrated the power of the ESP32. [Jeroen](http://spritesmods.com/) is the person most responsible for making the ESP32 ecosystem a pleasure to work with.
 
 | Keyboard | SMS |
 | ---------- | ----------- |
@@ -144,7 +144,7 @@ Its intended use is to be able to synchronize audio sources running at slightly 
 | NTSC | 14.318182Mhz | 14.318180Mhz |
 | PAL | 17.734475Mhz | 17.734476Mhz |
 
-As you can the APLL frequencies can be tuned to be incredibly close to the desired frequencies. Now we have a DAC running at an integer multiple of the color carrier we are off to the races with stable color on NTSC and PAL. From this point it is easy to construct color palettes that map indexed color to carrier phases / amplitudes.
+As you can see, the APLL frequencies can be tuned to be incredibly close to the desired frequencies. Now we have a DAC running at an integer multiple of the color carrier we are off to the races with stable color on NTSC and PAL. From this point it is easy to construct color palettes that map indexed color to carrier phases / amplitudes.
 
 ![colorburst](img/colorburst.png)
 
@@ -161,7 +161,7 @@ The APLL is great for lots of other applications. It gives you considerably more
 *Fig.3 20Mhz DAC output still looks nice and clean*
 
 ### No Free Lunch
-Exciting though it is, the APLL has one drawback. It seems that if you use a non integer denominator (`sdm1 != 0 || smd2 != 0`) in the APLL settings at high frequencies there seems to be a clock domain conflict between the DAC and I2S. If you split the DACs and try to use the `I2S_CONF_SINGLE_DATA_REG` to write audio samples to the other DAC channel this conflict manifests as dropouts in both DAC outputs. I would love to know what is going on here: It might have something to do with running the DAC way out of spec. Perhaps someone at Espressif will take pity on me an let me know.
+Exciting though it is, the APLL has one drawback. It seems that if you use a non integer denominator (`sdm1 != 0 || smd2 != 0`) in the APLL settings at high frequencies there seems to be a clock domain conflict between the DAC and I2S. If you split the DACs and try to use the `I2S_CONF_SINGLE_DATA_REG` to write audio samples to the other DAC channel this conflict manifests as dropouts in both DAC outputs. I would love to know what is going on here: It might have something to do with running the DAC way out of spec. Perhaps someone at Espressif will take pity on me and let me know.
 
 APLL / DAC video looks great but it appears we need another source of audio besides the second DAC channel.
 
@@ -187,7 +187,7 @@ This a/v pump is fed by the emulator running asynchronously producing frames of 
 
 ## Bluetooth Classic HID
 
-As of this writing the ESP32 IDF / Arduino does not support Bluetooth Classic input devices out of the box. **ESP_8_BIT** includes a minimal HCI/L2CAP/HID stack implemented on top of the VHCI api. This `hid_server` implementation is designed to support EDR Keyboards, WiiMotes and their peripherals. The implementation is bare bones but supports paring/reconnections and is easily separable to be used in other projects.
+As of this writing the ESP32 IDF / Arduino does not support Bluetooth Classic input devices out of the box. **ESP_8_BIT** includes a minimal HCI/L2CAP/HID stack implemented on top of the VHCI api. This `hid_server` implementation is designed to support EDR Keyboards, WiiMotes and their peripherals. The implementation is bare bones but supports pairing/reconnections and is easily separable to be used in other projects.
 
 ## Big Cartridges
 
