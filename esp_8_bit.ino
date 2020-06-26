@@ -18,6 +18,7 @@
 #include "esp_int_wdt.h"
 #include "esp_spiffs.h"
 
+//#define PERF  // some stats about where we spend our time
 #include "src/emu.h"
 #include "src/video_out.h"
 
