@@ -97,7 +97,7 @@ public:
 };
 
 //==================================================================
-//Classic hard wired NES controller
+//Classic hard wired NES controllers
 //==================================================================
 enum NES_Button
 {
@@ -114,7 +114,8 @@ enum NES_Button
 IRState _nes;
 int get_hid_nes(uint8_t* dst)
 {
-	uint8_t buttons = 0;
+	uint8_t buttonsA = 0;
+	uint8_t buttonsB = 0;
   
 	digitalWrite(NES_CTRL_LATCH, 1);
 	delayMicroseconds(0);
@@ -123,28 +124,42 @@ int get_hid_nes(uint8_t* dst)
 
 	for (int i = 0; i < 8; i++)
 		{
-			buttons |= digitalRead(NES_CTRL_DAT) << i;
+			buttonsA |= digitalRead(NES_CTRL_ADATA) << i;
+			buttonsB |= digitalRead(NES_CTRL_BDATA) << i;
 			digitalWrite(NES_CTRL_CLK, 0);
 			delayMicroseconds(0);
 			digitalWrite(NES_CTRL_CLK, 1);
 			delayMicroseconds(0);
 		}
+	//printf("NESCTRL:%02X %02X\n", buttonsA, buttonsB);
   
+	//Setup Controller A
 	uint16_t k = 0;
-	if ((buttons & ((1<<NES_LEFT) | (1<<NES_SELECT)))==0) 		k |= GENERIC_OTHER;	//Press LEFT & SELECT to open file menu
+	if ((buttonsA & ((1<<NES_LEFT) | (1<<NES_SELECT)))==0) 		k |= GENERIC_OTHER;	//Press LEFT & SELECT to open file menu
 	else
 		{
-			if ((buttons & (1<<NES_UP))==0)	 	k |= GENERIC_UP;
-			if ((buttons & (1<<NES_DOWN))==0) 	k |= GENERIC_DOWN;
-			if ((buttons & (1<<NES_LEFT))==0) 	k |= GENERIC_LEFT;
-			if ((buttons & (1<<NES_RIGHT))==0) 	k |= GENERIC_RIGHT;
-			if ((buttons & (1<<NES_A))==0) 		k |= GENERIC_FIRE | GENERIC_FIRE_A;
-			if ((buttons & (1<<NES_B))==0) 		k |= GENERIC_FIRE_B;
-			if ((buttons & (1<<NES_START))==0) 	k |= GENERIC_START;
-			if ((buttons & (1<<NES_SELECT))==0)	k |= GENERIC_SELECT;
+			if ((buttonsA & (1<<NES_UP))==0)		k |= GENERIC_UP;
+			if ((buttonsA & (1<<NES_DOWN))==0) 		k |= GENERIC_DOWN;
+			if ((buttonsA & (1<<NES_LEFT))==0) 		k |= GENERIC_LEFT;
+			if ((buttonsA & (1<<NES_RIGHT))==0) 	k |= GENERIC_RIGHT;
+			if ((buttonsA & (1<<NES_A))==0) 		k |= GENERIC_FIRE | GENERIC_FIRE_A;
+			if ((buttonsA & (1<<NES_B))==0) 		k |= GENERIC_FIRE_B;
+			if ((buttonsA & (1<<NES_START))==0) 	k |= GENERIC_START;
+			if ((buttonsA & (1<<NES_SELECT))==0)	k |= GENERIC_SELECT;
 		}
 	_nes.set(0,k,0); // no repeat period
-	//printf("NESCTRL:%02X\n", buttons);
+
+	//Setup Controller B
+	k = 0;
+	if ((buttonsB & (1<<NES_UP))==0)	 	k |= GENERIC_UP;
+	if ((buttonsB & (1<<NES_DOWN))==0) 		k |= GENERIC_DOWN;
+	if ((buttonsB & (1<<NES_LEFT))==0) 		k |= GENERIC_LEFT;
+	if ((buttonsB & (1<<NES_RIGHT))==0) 	k |= GENERIC_RIGHT;
+	if ((buttonsB & (1<<NES_A))==0) 		k |= GENERIC_FIRE | GENERIC_FIRE_A;
+	if ((buttonsB & (1<<NES_B))==0) 		k |= GENERIC_FIRE_B;
+	if ((buttonsB & (1<<NES_START))==0) 	k |= GENERIC_START;
+	if ((buttonsB & (1<<NES_SELECT))==0)	k |= GENERIC_SELECT;
+	_nes.set(1,k,0); // no repeat period
   
   return _nes.get_hid(dst);		
 }

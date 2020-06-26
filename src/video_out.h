@@ -19,10 +19,18 @@
 #define AUDIO_PIN   18  // can be any pin
 #define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
 
-//NES classic controller (YOUR wire colors might be different, double check!)
+//NES classic controller (wire colors might be different, double check!)
+//       ___
+//DATA  |o o| NC
+//LATCH |o o| NC
+//CLK   |o o/ 3V3
+//GND   |o_/
+//
+//Only the DATA pin goes to different IOs for teh two controllers 
 //3V3 (red) (NOT 5V!)
 //GND (white)
-#define NES_CTRL_DAT 21    //    # MISO	(black)
+#define NES_CTRL_ADATA 21  //    # DATA controller A	(black)
+#define NES_CTRL_BDATA 17  //    # DATA controller B	(black)
 #define NES_CTRL_LATCH 27  //    # CS	(yellow)
 #define NES_CTRL_CLK 22    //    # CLK 	(green)
 
@@ -188,6 +196,8 @@ void video_init_hw(int line_width, int samples_per_cc)
 	digitalWrite(NES_CTRL_LATCH, 0);
 	pinMode(NES_CTRL_CLK, GPIO_MODE_OUTPUT);
 	digitalWrite(NES_CTRL_CLK, 1);
+	pinMode(NES_CTRL_ADATA, INPUT_PULLUP);	//use pull up to avoid issues if controller is unplugged
+	pinMode(NES_CTRL_BDATA, INPUT_PULLUP);	//use pull up to avoid issues if controller is unplugged
 #endif
 }
 
