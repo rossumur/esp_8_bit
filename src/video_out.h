@@ -15,9 +15,16 @@
 ** SOFTWARE.
 */
 
-#define VIDEO_PIN   26
+#define VIDEO_PIN   25
 #define AUDIO_PIN   18  // can be any pin
 #define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
+
+//NES classic controller (YOUR wire colors might be different, double check!)
+//3V3 (red) (NOT 5V!)
+//GND (white)
+#define NES_CTRL_DAT 21    //    # MISO	(black)
+#define NES_CTRL_LATCH 27  //    # CS	(yellow)
+#define NES_CTRL_CLK 22    //    # CLK 	(green)
 
 int _pal_ = 0;
 
@@ -42,10 +49,9 @@ int _pal_ = 0;
 #include "driver/gpio.h"
 #include "driver/i2s.h"
 
-#ifdef IR_PIN
+#ifdef IR_PIN || NES_CTRL_LATCH
 #include "ir_input.h"  // ir peripherals
 #endif
-
 
 //====================================================================================================
 //====================================================================================================
@@ -175,6 +181,14 @@ void video_init_hw(int line_width, int samples_per_cc)
 #ifdef IR_PIN
     pinMode(IR_PIN,INPUT);
 #endif
+
+	// Pin mappings for NES controller input
+#ifdef NES_CTRL_LATCH
+	pinMode(NES_CTRL_LATCH, GPIO_MODE_OUTPUT);
+	digitalWrite(NES_CTRL_LATCH, 0);
+	pinMode(NES_CTRL_CLK, GPIO_MODE_OUTPUT);
+	digitalWrite(NES_CTRL_CLK, 1);
+#endif
 }
 
 // send an audio sample every scanline (15720hz for ntsc, 15600hz for PAL)
@@ -283,10 +297,10 @@ uint32_t us() {
 // HSYNCH period is 44/315*455 or 63.55555..us
 // Field period is 262*44/315*455 or 16651.5555us
 
-#define IRE(_x)          ((uint32_t)(((_x)+40)*255/3.3/147.5) << 8)   // 3.3V DAC
-#define SYNC_LEVEL       IRE(-40)
+#define IRE(_x)          ((uint32_t)(((_x)+20)*255/3.3/147.5) << 8)   // 3.3V DAC
+#define SYNC_LEVEL       IRE(-20)
 #define BLANKING_LEVEL   IRE(0)
-#define BLACK_LEVEL      IRE(7.5)
+#define BLACK_LEVEL      IRE(0)
 #define GRAY_LEVEL       IRE(50)
 #define WHITE_LEVEL      IRE(100)
 

@@ -30,7 +30,7 @@
 #define VIDEO_STANDARD NTSC
 
 //  Choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI
-#define EMULATOR EMU_ATARI
+#define EMULATOR EMU_NES
 
 //  Many emus work fine on a single core (S2), file system access can cause a little flickering
 //  #define SINGLE_CORE

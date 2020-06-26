@@ -27,6 +27,7 @@
 #define RETCON_CONTROLLER
 #define FLASHBACK_CONTROLLER
 //#define APPLE_TV_CONTROLLER
+#define NES_CONTROLLER
 
 uint8_t _ir_last = 0;
 uint8_t _ir_count = 0;
@@ -94,6 +95,59 @@ public:
         return 0;
     }
 };
+
+//==================================================================
+//Classic hard wired NES controller
+//==================================================================
+enum NES_Button
+{
+	NES_A = 0,
+	NES_B = 1,
+	NES_SELECT = 2,
+	NES_START = 3,
+	NES_UP = 4,
+	NES_DOWN = 5,
+	NES_LEFT = 6,
+	NES_RIGHT = 7,
+};
+
+IRState _nes;
+int get_hid_nes(uint8_t* dst)
+{
+	uint8_t buttons = 0;
+  
+	digitalWrite(NES_CTRL_LATCH, 1);
+	delayMicroseconds(0);
+	digitalWrite(NES_CTRL_LATCH, 0);
+	delayMicroseconds(0);
+
+	for (int i = 0; i < 8; i++)
+		{
+			buttons |= digitalRead(NES_CTRL_DAT) << i;
+			digitalWrite(NES_CTRL_CLK, 0);
+			delayMicroseconds(0);
+			digitalWrite(NES_CTRL_CLK, 1);
+			delayMicroseconds(0);
+		}
+  
+	uint16_t k = 0;
+	if ((buttons & ((1<<NES_LEFT) | (1<<NES_SELECT)))==0) 		k |= GENERIC_OTHER;	//Press LEFT & SELECT to open file menu
+	else
+		{
+			if ((buttons & (1<<NES_UP))==0)	 	k |= GENERIC_UP;
+			if ((buttons & (1<<NES_DOWN))==0) 	k |= GENERIC_DOWN;
+			if ((buttons & (1<<NES_LEFT))==0) 	k |= GENERIC_LEFT;
+			if ((buttons & (1<<NES_RIGHT))==0) 	k |= GENERIC_RIGHT;
+			if ((buttons & (1<<NES_A))==0) 		k |= GENERIC_FIRE | GENERIC_FIRE_A;
+			if ((buttons & (1<<NES_B))==0) 		k |= GENERIC_FIRE_B;
+			if ((buttons & (1<<NES_START))==0) 	k |= GENERIC_START;
+			if ((buttons & (1<<NES_SELECT))==0)	k |= GENERIC_SELECT;
+		}
+	_nes.set(0,k,0); // no repeat period
+	//printf("NESCTRL:%02X\n", buttons);
+  
+  return _nes.get_hid(dst);		
+}
 
 //==========================================================
 //==========================================================
@@ -664,9 +718,13 @@ int get_hid_ir(uint8_t* dst)
     if (n = get_hid_flashback(dst))
         return n;
 #endif
-    #ifdef WEBTV_KEYBOARD
+#ifdef NES_CONTROLLER
+    if (n = get_hid_nes(dst))
+        return n;
+#endif
+#ifdef WEBTV_KEYBOARD
         return get_hid_webtv(dst);
-    #endif
-    return 0;
+#endif
+	return 0;
 }
 #endif
