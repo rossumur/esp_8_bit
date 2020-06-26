@@ -1,5 +1,6 @@
 # **ESP_8_BIT:** Atari 8 bit computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
 ## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction
+## Support classic NES controller hardwired to the ESP32. SELECT + LEFT to access file menu. SELECT + RESET -> reset
 
 ![ESP_8_BIT](img/esp8bit.jpg)
 
@@ -16,6 +17,12 @@
     |  ESP32  |             --- 10nf
     |         |              |
     |         |              v gnd
+    |         |
+    |      21 |------------------> NES controller DATA
+    |      22 |------------------> NES controller CLOCK
+    |      27 |------------------> NES controller LATCH
+    |         |          3.3v <--> NES controller VCC
+    |         |           gnd <--> NES controller GND
     |         |
     |         |     3.3v <--+-+   IR Receiver
     |         |      gnd <--|  )  TSOP4838 etc.
