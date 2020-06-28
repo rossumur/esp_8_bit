@@ -19,20 +19,30 @@
 #define AUDIO_PIN   18  // can be any pin
 #define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
 
-//NES classic controller (wire colors might be different, double check!)
+//NES OR SNES classic controller (wire colors might be different, double check!)
 //       ___
 //DATA  |o o| NC
 //LATCH |o o| NC
-//CLK   |o o/ 3V3
+//CLOCK |o o/ 3V3
 //GND   |o_/
-//
-//Only the DATA pin goes to different IOs for teh two controllers 
+//       _
+//3V3   |o|
+//CLOCK |o|
+//LATCH |o|
+//DATA  |o|
+//      |-|
+//NC    |o|
+//NC    |o|
+//GND   |o|
+//       -  
+//NES and SNES controllers uses same pins
+//Only the DATA pin goes to different IOs for the two controllers 
 //3V3 (red) (NOT 5V!)
 //GND (white)
 #define NES_CTRL_ADATA 21  //    # DATA controller A	(black)
 #define NES_CTRL_BDATA 17  //    # DATA controller B	(black)
-#define NES_CTRL_LATCH 27  //    # CS	(yellow)
-#define NES_CTRL_CLK 22    //    # CLK 	(green)
+#define NES_CTRL_LATCH 27  //    # LATCH	(yellow)
+#define NES_CTRL_CLK 22    //    # CLOCK 	(green)
 
 int _pal_ = 0;
 

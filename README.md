@@ -1,6 +1,6 @@
 # **ESP_8_BIT:** Atari 8 bit computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
 ## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction
-## Support classic NES one or two controllers hardwired to the ESP32. SELECT + LEFT to access file menu. SELECT + START -> reset
+## Supports classic NES (or SNES) one or two controllers hardwired to the ESP32. SELECT + LEFT to access file menu. SELECT + START -> reset
 
 ![ESP_8_BIT](img/esp8bit.jpg)
 
@@ -18,20 +18,40 @@
     |         |              |
     |         |              v gnd
     |         |
-    |      17 |------------------> NES controller DATA B
-    |      21 |------------------> NES controller DATA A
-    |      22 |------------------> NES controller CLOCK A&B
-    |      27 |------------------> NES controller LATCH A&B
-    |         |          3.3v <--> NES controller VCC A&B
-    |         |           gnd <--> NES controller GND A&B
+    |      17 |------------------> NES (or SNES) controller DATA B
+    |      21 |------------------> NES (or SNES) controller DATA A
+    |      22 |------------------> NES (or SNES) controller CLOCK A&B
+    |      27 |------------------> NES (or SNES) controller LATCH A&B
+    |         |          3.3v <--> NES (or SNES) controller VCC A&B
+    |         |           gnd <--> NES (or SNES) controller GND A&B
     |         |
     |         |     3.3v <--+-+   IR Receiver
     |         |      gnd <--|  )  TSOP4838 etc.
     |       0 |-------------+-+   (Optional)
     -----------
 
+NES        ___
+    DATA  |o o| NC
+    LATCH |o o| NC
+    CLOCK |o o/ 3V3
+    GND   |o_/
+
+SNES       _
+    3V3   |o|
+    CLOCK |o|
+    LATCH |o|
+    DATA  |o|
+          |-|
+    NC    |o|
+    NC    |o|
+    GND   |o|
+           -  	
+	
 ```
 Audio is on pin 18 by default but can be remapped.
+
+Enable either NES or SNES controller with
+#define NES_CONTROLLER or #define SNES_CONTROLLER (not both) in ir_input.h file
 
 Before you compile the sketch you have 2 choices:
 ```
