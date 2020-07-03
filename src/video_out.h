@@ -385,8 +385,8 @@ void video_init(int samples_per_cc, int machine, const uint32_t* palette, int nt
         _hsync = usec(4.7);
         _pal_ = 0;
     } else {
-        pal_init();
         _pal_ = 1;
+        pal_init();
     }
     
     _active_lines = 240;
@@ -844,8 +844,7 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
             burst(buf);
             blit(_lines[i-32],buf + _active_start);
         } else if (i < 304) {                   // post render/black 272-304
-            if (i < 272)                        // slight optimization here, once you have 2 blanking buffers
-                blanking(buf,false);
+            blanking(buf,false);
         } else {
             pal_sync(buf,i);                    // 8 lines of sync 304-312
         }
