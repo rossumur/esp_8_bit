@@ -109,86 +109,76 @@ uint32_t _nes_yuv_4_phase_pal[] = {
 };
 
 #ifdef calc_palettes
-
-static void make_nes_pal_uv(uint8_t *u,uint8_t *v)
-{
-    for (int c = 0; c < 16; c++) {
-        if (c == 0 || c > 12)
-            ;
-        else {
-            float a = 2*M_PI*(c-1)/12 + 2*M_PI*(180-33)/360;    // just guessing at hue adjustment for PAL
-            u[c] = cos(a)*127;
-            v[c] = sin(a)*127;
-
-            // get the phase offsets for even and odd pal lines
-            //_p0[c] = atan2(0.436798*u[c],0.614777*v[c])*256/(2*M_PI) + 192;
-            //_p1[c] = atan2(0.436798*u[c],-0.614777*v[c])*256/(2*M_PI) + 192;
-        }
-    }
-}
-
-// TODO. scale the u,v to fill range
-uint32_t yuv_palette(int r, int g, int b)
-{
-    float y = 0.299 * r + 0.587 *g + 0.114 * b;
-    float u = -0.147407 * r - 0.289391 * g + 0.436798 * b;
-    float v =  0.614777 * r - 0.514799 * g - 0.099978 * b;
-    int luma = y/255*(WHITE_LEVEL-BLACK_LEVEL) + BLACK_LEVEL;
-    uint8_t ui = u;
-    uint8_t vi = v;
-    return ((luma & 0xFF00) << 16) | ((ui & 0xF8) << 8) | (vi >> 3); // luma:0:u:v
-}
-
-void make_yuv_palette(const char* name, const uint32_t* pal, int len);
-
-extern rgb_t nes_palette[64];
-extern "C" void pal_generate();
-void make_alt_pal()
-{
-    pal_generate();
-    uint32_t pal[64];
-    for (int i = 0; i < 64; i++) {
-        auto p = nes_palette[i];
-        pal[i] = (p.r << 16) | (p.g << 8) | p.b;
-    }
-    make_yuv_palette("_nes_yuv",pal,64);
-}
-
-static const float _nes_luma[] = {
-    0.50,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.00,0.02,0.02,
-    0.75,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.24,0.04,0.04,
-    1.00,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.47,0.05,0.05,
-    1.00,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.77,0.07,0.07,
+// RGB palette from http://drag.wootest.net/misc/palgen.html
+static const uint8_t _nes_r[] = {
+	0x46,0x00,0x00,0x02,0x35,0x57,0x5A,0x41,0x12,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x9D,0x00,0x05,0x57,0x9F,0xCC,0xCF,0xA4,0x5C,0x0B,0x00,0x00,0x00,0x00,0x00,0x00,
+	0xFE,0x1F,0x53,0x98,0xFC,0xFF,0xFF,0xFF,0xC4,0x71,0x28,0x00,0x00,0x2B,0x00,0x00,
+	0xFE,0x9E,0xAF,0xD0,0xFE,0xFF,0xFF,0xFF,0xE7,0xC5,0xA6,0x94,0x92,0xA7,0x00,0x00
+};
+static const uint8_t _nes_g[] = {
+	0x46,0x06,0x06,0x06,0x03,0x00,0x00,0x00,0x02,0x14,0x1E,0x1E,0x15,0x00,0x00,0x00,
+	0x9D,0x4A,0x30,0x18,0x07,0x02,0x0B,0x23,0x3F,0x58,0x66,0x67,0x5E,0x00,0x00,0x00,
+	0xFF,0x9E,0x76,0x65,0x67,0x6C,0x74,0x80,0x9A,0xB3,0xC4,0xC8,0xBF,0x2B,0x00,0x00,
+	0xFF,0xD5,0xC0,0xB8,0xBF,0xC0,0xC3,0xCA,0xD5,0xDF,0xE6,0xE8,0xE4,0xA7,0x00,0x00
+};
+static const uint8_t _nes_b[] = {
+	0x46,0x5A,0x78,0x73,0x4C,0x0E,0x00,0x00,0x00,0x00,0x00,0x00,0x21,0x00,0x00,0x00,
+	0x9D,0xB9,0xE1,0xDA,0xA7,0x55,0x00,0x00,0x00,0x00,0x00,0x13,0x6E,0x00,0x00,0x00,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xB3,0x66,0x14,0x00,0x00,0x21,0x74,0xD0,0x2B,0x00,0x00,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xE0,0xBD,0x9C,0x8B,0x8E,0xA3,0xC5,0xEB,0xA7,0x00,0x00
 };
 
-static void make_nes_palette(int phases)
+//Makes four samples (one cycle) using QAM modulation on the color carrier for NTSC from a RGB palette
+void make_ntsc_palette()
 {
-    float saturation = 0.5;
-    printf("uint32_t nes_%d_phase[64] = {\n",phases);
-    for (int i = 0; i < 64; i++) {
-        int chroma = (i & 0xF);
-        int luma = _nes_luma[i]*(WHITE_LEVEL-BLACK_LEVEL) + BLANKING_LEVEL;
-
-        int p[8] = {0};
-        for (int j = 0; j < phases; j++)
-            p[j] = luma;  // 0x1D is really black, really BLANKING_LEVEL
-
-        chroma -= 1;
-        if (chroma >= 0 && chroma < 12) {
-            for (int j = 0; j < phases; j++)
-                p[j] += sin(2*M_PI*(5 + chroma + (12/phases)*j)/12) * BLANKING_LEVEL/2*saturation;   // not sure why 5 is the right offset
-        }
-
-        uint32_t pi = 0;
-        for (int j = 0; j < 4; j++)
-            pi = (pi << 8) | p[j] >> 8;
-        printf("0x%08X,",pi);
-        if ((i & 7) == 7)
-            printf("\n");
-    }
-    printf("};\n");
+	float ofs = 20;		//black level
+    float amp = 60;		//signal span
+    float hue = M_PI;	//hue correction if any...
+	float saturation = 1.0;	//Color saturation
+	for (int j = 0; j < 64; j++)
+	{
+		float y = (0.299 * _nes_r[j] + 0.587 * _nes_g[j] + 0.114 * _nes_b[j])/255.f;
+		float u = (-0.147407 * _nes_r[j] - 0.289391 * _nes_g[j] + 0.436798 * _nes_b[j])/255.f;
+		float v = (0.614777 * _nes_r[j] - 0.514799 * _nes_g[j] - 0.099978 * _nes_b[j])/255.f;
+		float wt = 0;
+		uint32_t sampl = 0;
+		for (int i = 3; i >= 0; i--)
+		{
+			sampl |= (uint32_t) round(ofs + amp * (y + saturation * (u * sinf(wt+hue) + v * cosf(wt+hue)))) << (i*8);
+			wt += M_PI/2;
+		}
+		nes_4_phase[j] = sampl;
+		//printf("0x%08x\n", sampl);
+	}
 }
 
+//Makes four samples (one cycle) using QAM modulation on the color carrier for PAL (even/odd lines) from a RGB palette
+void make_pal_palette()
+{
+	float ofs = 13;		//black level
+    float amp = 50;		//signal span
+    float hue = M_PI;	//hue correction if any...
+	float saturation = 0.6;	//Color saturation
+	for (int j = 0; j < 64; j++)
+	{
+		float y = (0.299 * _nes_r[j] + 0.587 * _nes_g[j] + 0.114 * _nes_b[j])/255.f;
+		float u = (-0.147407 * _nes_r[j] - 0.289391 * _nes_g[j] + 0.436798 * _nes_b[j])/255.f;
+		float v = (0.614777 * _nes_r[j] - 0.514799 * _nes_g[j] - 0.099978 * _nes_b[j])/255.f;
+		float wt = 0;
+		uint32_t e_sampl = 0;
+		uint32_t o_sampl = 0;
+		for (int i = 3; i >= 0; i--)
+		{
+			e_sampl |= (uint32_t) round(ofs + amp * (y + saturation * (u * sinf(wt+hue) + v * cosf(wt+hue)))) << (i*8);
+			o_sampl |= (uint32_t) round(ofs + amp * (y + saturation * (u * sinf(wt-hue) - v * cosf(wt-hue)))) << (i*8);
+			wt += M_PI/2;
+		}
+		_nes_yuv_4_phase_pal[j] = e_sampl;
+		_nes_yuv_4_phase_pal[j+64] = o_sampl;
+		//printf("0x%08x  0x%08x\n", e_sampl, o_sampl);
+	}
+}
 #endif
 
 uint8_t* _nofrendo_rom = 0;
@@ -254,14 +244,14 @@ public:
         _ext = _nes_ext;
         _help = _nes_help;
         _audio_frequency = audio_frequency;
+		gen_palettes();
     }
 
     virtual void gen_palettes()
     {
 #ifdef calc_palettes
-		make_nes_palette(3);
-        make_nes_palette(4);
-        make_alt_pal();
+		make_ntsc_palette();
+        make_pal_palette();
 #endif
     }
 
