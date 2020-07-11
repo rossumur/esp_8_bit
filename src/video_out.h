@@ -15,37 +15,6 @@
 ** SOFTWARE.
 */
 
-#define VIDEO_PIN   25
-#define AUDIO_PIN   18  // can be any pin
-#define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
-
-//NES OR SNES classic controller (wire colors might be different, double check!)
-//       ___
-//DATA  |o o| NC
-//LATCH |o o| NC
-//CLOCK |o o/ 3V3
-//GND   |o_/
-//       _
-//3V3   |o|
-//CLOCK |o|
-//LATCH |o|
-//DATA  |o|
-//      |-|
-//NC    |o|
-//NC    |o|
-//GND   |o|
-//       -  
-//NES and SNES controllers uses same pins
-//Only the DATA pin goes to different IOs for the two controllers 
-//3V3 (red) (NOT 5V!)
-//GND (white)
-#define NES_CTRL_ADATA 21  //    # DATA controller A	(black)
-#define NES_CTRL_BDATA 17  //    # DATA controller B	(black)
-#define NES_CTRL_LATCH 27  //    # LATCH	(yellow)
-#define NES_CTRL_CLK 22    //    # CLOCK 	(green)
-
-int _pal_ = 0;
-
 #ifdef ESP_PLATFORM
 #include "esp_types.h"
 #include "esp_heap_caps.h"
@@ -67,9 +36,13 @@ int _pal_ = 0;
 #include "driver/gpio.h"
 #include "driver/i2s.h"
 
+#include "config.h"
+
 #ifdef IR_PIN || NES_CTRL_LATCH
-#include "ir_input.h"  // ir peripherals
+#include "ir_input.h"  // ir & HW peripherals
 #endif
+
+int _pal_ = 0;
 
 //====================================================================================================
 //====================================================================================================
@@ -316,14 +289,6 @@ uint32_t us() {
 // 455/2 color clocks per line, round up to maintain phase
 // HSYNCH period is 44/315*455 or 63.55555..us
 // Field period is 262*44/315*455 or 16651.5555us
-
-#define IRE(_x)          ((uint32_t)(((_x)+20)*255/3.3/147.5) << 8)   // 3.3V DAC
-#define SYNC_LEVEL       IRE(-20)
-#define BLANKING_LEVEL   IRE(0)
-#define BLACK_LEVEL      IRE(0)
-#define GRAY_LEVEL       IRE(50)
-#define WHITE_LEVEL      IRE(100)
-
 
 #define P0 (color >> 16)
 #define P1 (color >> 8)
