@@ -23,13 +23,6 @@
 // poll to synthesize hid events at every frame
 // i know there is a perfectly good peripheral for this in the ESP32 but this seems more fun somehow
 
-#define WEBTV_KEYBOARD
-#define RETCON_CONTROLLER
-#define FLASHBACK_CONTROLLER
-//#define APPLE_TV_CONTROLLER
-#define NES_CONTROLLER	//Enable only NES OR SNES not both!
-//#define SNES_CONTROLLER	//Enable only NES OR SNES not both!
-
 uint8_t _ir_last = 0;
 uint8_t _ir_count = 0;
 uint8_t _keyDown = 0;
@@ -67,7 +60,7 @@ public:
         if ((m & (GENERIC_UP | GENERIC_DOWN)) == (GENERIC_UP | GENERIC_DOWN))
             b++; // bogus?
         if (b) {
-            printf("bogus:%04X\n",m);
+            //printf("bogus:%04X\n",m);
             return;
         }
 
@@ -101,67 +94,45 @@ public:
 //Classic hard wired NES controllers
 //==================================================================
 #ifdef NES_CONTROLLER
-enum NES_Button
+const uint16_t map_nes[8] = 
 {
-	NES_A = 0,
-	NES_B = 1,
-	NES_SELECT = 2,
-	NES_START = 3,
-	NES_UP = 4,
-	NES_DOWN = 5,
-	NES_LEFT = 6,
-	NES_RIGHT = 7,
+	GENERIC_FIRE | GENERIC_FIRE_A,	//NES_A
+	GENERIC_FIRE_B,	//NES_B
+	GENERIC_SELECT,	//NES_SELECT
+	GENERIC_START,	//NES_START
+	GENERIC_UP,		//NES_UP
+	GENERIC_DOWN,	//NES_DOWN
+	GENERIC_LEFT,	//NES_LEFT
+	GENERIC_RIGHT	//NES_RIGHT
 };
 
 IRState _nes;
 int get_hid_nes(uint8_t* dst)
 {
-	uint8_t buttonsA = 0;
-	uint8_t buttonsB = 0;
-  
 	digitalWrite(NES_CTRL_LATCH, 1);
 	delayMicroseconds(0);
 	digitalWrite(NES_CTRL_LATCH, 0);
 	delayMicroseconds(0);
 
+	uint16_t buttonsA = 0;
+	uint16_t buttonsB = 0;
 	for (int i = 0; i < 8; i++)
 		{
-			buttonsA |= digitalRead(NES_CTRL_ADATA) << i;
-			buttonsB |= digitalRead(NES_CTRL_BDATA) << i;
+			buttonsA |= (1^digitalRead(NES_CTRL_ADATA)) * map_nes[i];
+			buttonsB |= (1^digitalRead(NES_CTRL_BDATA)) * map_nes[i];
 			digitalWrite(NES_CTRL_CLK, 0);
 			delayMicroseconds(0);
 			digitalWrite(NES_CTRL_CLK, 1);
 			delayMicroseconds(0);
 		}
-	//printf("NESCTRL:%02X %02X\n", buttonsA, buttonsB);
+	//printf("NESCTRL:%04X %04X\n", buttonsA, buttonsB);
   
 	//Setup Controller A
-	uint16_t k = 0;
-	if ((buttonsA & ((1<<NES_LEFT) | (1<<NES_SELECT)))==0) 		k |= GENERIC_OTHER;	//Press LEFT & SELECT to open file menu
-	else
-		{
-			if ((buttonsA & (1<<NES_UP))==0)		k |= GENERIC_UP;
-			if ((buttonsA & (1<<NES_DOWN))==0) 		k |= GENERIC_DOWN;
-			if ((buttonsA & (1<<NES_LEFT))==0) 		k |= GENERIC_LEFT;
-			if ((buttonsA & (1<<NES_RIGHT))==0) 	k |= GENERIC_RIGHT;
-			if ((buttonsA & (1<<NES_A))==0) 		k |= GENERIC_FIRE | GENERIC_FIRE_A;
-			if ((buttonsA & (1<<NES_B))==0) 		k |= GENERIC_FIRE_B;
-			if ((buttonsA & (1<<NES_START))==0) 	k |= GENERIC_START;
-			if ((buttonsA & (1<<NES_SELECT))==0)	k |= GENERIC_SELECT;
-		}
-	_nes.set(0,k,0); // no repeat period
+	if (buttonsA == (GENERIC_LEFT | GENERIC_SELECT)) buttonsA |= GENERIC_OTHER;	//Press LEFT & SELECT to open file menu
+	_nes.set(0,buttonsA,0); // no repeat period
 
 	//Setup Controller B
-	k = 0;
-	if ((buttonsB & (1<<NES_UP))==0)	 	k |= GENERIC_UP;
-	if ((buttonsB & (1<<NES_DOWN))==0) 		k |= GENERIC_DOWN;
-	if ((buttonsB & (1<<NES_LEFT))==0) 		k |= GENERIC_LEFT;
-	if ((buttonsB & (1<<NES_RIGHT))==0) 	k |= GENERIC_RIGHT;
-	if ((buttonsB & (1<<NES_A))==0) 		k |= GENERIC_FIRE | GENERIC_FIRE_A;
-	if ((buttonsB & (1<<NES_B))==0) 		k |= GENERIC_FIRE_B;
-	if ((buttonsB & (1<<NES_START))==0) 	k |= GENERIC_START;
-	if ((buttonsB & (1<<NES_SELECT))==0)	k |= GENERIC_SELECT;
-	_nes.set(1,k,0); // no repeat period
+	_nes.set(1,buttonsB,0); // no repeat period
   
   return _nes.get_hid(dst);		
 }
@@ -171,71 +142,49 @@ int get_hid_nes(uint8_t* dst)
 //Classic hard wired SNES controllers
 //==================================================================
 #ifdef SNES_CONTROLLER
-enum SNES_Button
+const uint16_t map_snes[12] = 
 {
-  SNES_B = 0,
-  SNES_Y = 1,
-  SNES_SELECT = 2,
-  SNES_START = 3,
-  SNES_UP = 4,
-  SNES_DOWN = 5,
-  SNES_LEFT = 6,
-  SNES_RIGHT = 7,
-  SNES_A = 8,
-  SNES_X = 9,
-  SNES_L = 10,
-  SNES_R = 11,
+	GENERIC_FIRE_B,	//SNES_B
+	GENERIC_FIRE_C,	//SNES_Y
+	GENERIC_SELECT,	//SNES_SELECT
+	GENERIC_START,	//SNES_START
+	GENERIC_UP,		//SNES_UP
+	GENERIC_DOWN,	//SNES_DOWN
+	GENERIC_LEFT,	//SNES_LEFT
+	GENERIC_RIGHT,	//SNES_RIGHT
+	GENERIC_FIRE | GENERIC_FIRE_A,	//SNES_A
+	GENERIC_FIRE_X,	//SNES_X
+	GENERIC_FIRE_Y,	//SNES_L
+	GENERIC_FIRE_Z	//SNES_R
 };
 
 IRState _snes;
 int get_hid_snes(uint8_t* dst)
 {
-	uint16_t buttonsA = 0;
-	uint16_t buttonsB = 0;
-  
 	digitalWrite(NES_CTRL_LATCH, 1);
 	delayMicroseconds(0);
 	digitalWrite(NES_CTRL_LATCH, 0);
 	delayMicroseconds(0);
 
+	uint16_t buttonsA = 0;
+	uint16_t buttonsB = 0;
 	for (int i = 0; i < 12; i++)
 		{
-			buttonsA |= digitalRead(NES_CTRL_ADATA) << i;
-			buttonsB |= digitalRead(NES_CTRL_BDATA) << i;
+			buttonsA |= (1^digitalRead(NES_CTRL_ADATA)) * map_snes[i];
+			buttonsB |= (1^digitalRead(NES_CTRL_BDATA)) * map_snes[i];
 			digitalWrite(NES_CTRL_CLK, 0);
 			delayMicroseconds(0);
 			digitalWrite(NES_CTRL_CLK, 1);
 			delayMicroseconds(0);
 		}
-	//printf("SNESCTRL:%03X %03X\n", buttonsA, buttonsB);
+	//printf("SNESCTRL:%04X %04X\n", buttonsA, buttonsB);
   
 	//Setup Controller A
-	uint16_t k = 0;
-	if ((buttonsA & ((1<<SNES_LEFT) | (1<<SNES_SELECT)))==0) 		k |= GENERIC_OTHER;	//Press LEFT & SELECT to open file menu
-	else
-		{
-			if ((buttonsA & (1<<SNES_UP))==0)		k |= GENERIC_UP;
-			if ((buttonsA & (1<<SNES_DOWN))==0) 	k |= GENERIC_DOWN;
-			if ((buttonsA & (1<<SNES_LEFT))==0) 	k |= GENERIC_LEFT;
-			if ((buttonsA & (1<<SNES_RIGHT))==0) 	k |= GENERIC_RIGHT;
-			if ((buttonsA & (1<<SNES_A))==0) 		k |= GENERIC_FIRE | GENERIC_FIRE_A;
-			if ((buttonsA & (1<<SNES_B))==0) 		k |= GENERIC_FIRE_B;
-			if ((buttonsA & (1<<SNES_START))==0) 	k |= GENERIC_START;
-			if ((buttonsA & (1<<SNES_SELECT))==0)	k |= GENERIC_SELECT;
-		}
-	_snes.set(0,k,0); // no repeat period
+	if (buttonsA == (GENERIC_LEFT | GENERIC_SELECT)) buttonsA |= GENERIC_OTHER;	//Press LEFT & SELECT to open file menu
+	_snes.set(0,buttonsA,0); // no repeat period
 
 	//Setup Controller B
-	k = 0;
-	if ((buttonsB & (1<<SNES_UP))==0)	 	k |= GENERIC_UP;
-	if ((buttonsB & (1<<SNES_DOWN))==0) 	k |= GENERIC_DOWN;
-	if ((buttonsB & (1<<SNES_LEFT))==0) 	k |= GENERIC_LEFT;
-	if ((buttonsB & (1<<SNES_RIGHT))==0) 	k |= GENERIC_RIGHT;
-	if ((buttonsB & (1<<SNES_A))==0) 		k |= GENERIC_FIRE | GENERIC_FIRE_A;
-	if ((buttonsB & (1<<SNES_B))==0) 		k |= GENERIC_FIRE_B;
-	if ((buttonsB & (1<<SNES_START))==0) 	k |= GENERIC_START;
-	if ((buttonsB & (1<<SNES_SELECT))==0)	k |= GENERIC_SELECT;
-	_snes.set(1,k,0); // no repeat period
+	_snes.set(1,buttonsB,0); // no repeat period
   
   return _snes.get_hid(dst);		
 }

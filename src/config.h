@@ -1,4 +1,6 @@
-//ESP pin map
+/****************************************************************/
+/*ESP pin map*/
+/****************************************************************/
 #define VIDEO_PIN   25	// Both 25 and 26 are locked to video output
 #define AUDIO_PIN   18  // can be any pin
 #define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
@@ -29,7 +31,19 @@
 #define NES_CTRL_LATCH 27  //    # LATCH	(yellow)
 #define NES_CTRL_CLK 22    //    # CLOCK 	(green)
 
-//Video levels
+/****************************************************************/
+/*Controller support*/
+/****************************************************************/
+#define WEBTV_KEYBOARD
+#define RETCON_CONTROLLER
+#define FLASHBACK_CONTROLLER
+//#define APPLE_TV_CONTROLLER
+#define NES_CONTROLLER	//Enable only NES OR SNES not both!
+//#define SNES_CONTROLLER	//Enable only NES OR SNES not both!
+
+/****************************************************************/
+/*Video levels*/
+/****************************************************************/
 #define SYNC_SIZE 		 40	//Sets the size of the sync pulses nominal is 40 but lower values (20) might help in some cases
 #define IRE(_x)          ((uint32_t)(((_x)+SYNC_SIZE)*255/3.3/147.5) << 8)   // 3.3V DAC output
 #define SYNC_LEVEL       IRE(-SYNC_SIZE)

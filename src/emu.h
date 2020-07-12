@@ -29,6 +29,7 @@
 #include <map>
 
 #include "hid_server/hid_server.h"
+#include "config.h"
 
 #define EMU_ATARI 1
 #define EMU_NES 2
@@ -39,13 +40,6 @@ enum {
   PAL = 0,
   NTSC = 1
 };
-
-#define IRE(_x)          ((uint32_t)((_x+20)*255/3.3/147.5) << 8)   // 3.3V DAC
-#define SYNC_LEVEL       IRE(-20)
-#define BLANKING_LEVEL   IRE(0)
-#define BLACK_LEVEL      IRE(0)
-#define GRAY_LEVEL       IRE((50)
-#define WHITE_LEVEL      IRE(100)
 
 extern "C"
 void* MALLOC32(int size, const char* name);
