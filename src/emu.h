@@ -36,11 +36,6 @@
 #define EMU_NES6 4
 #define EMU_SMS 3
 
-enum {
-  PAL = 0,
-  NTSC = 1
-};
-
 extern "C"
 void* MALLOC32(int size, const char* name);
 

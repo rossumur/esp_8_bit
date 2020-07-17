@@ -1,3 +1,27 @@
+#pragma once
+#define PAL 0
+#define NTSC 1
+
+/******************************************************************/
+/*Some stats about where we spend our time*/
+/******************************************************************/
+//#define PERF
+
+/******************************************************************/
+/*Choose one of the video standards: PAL or NTSC*/
+/******************************************************************/
+#define VIDEO_STANDARD NTSC
+
+/******************************************************************/
+/*Choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI*/
+/******************************************************************/
+#define EMULATOR EMU_NES
+
+/******************************************************************/
+/*Many emus work fine on a single core (S2), file system access can cause a little flickering*/
+/******************************************************************/
+//#define SINGLE_CORE
+
 /****************************************************************/
 /*ESP pin map*/
 /****************************************************************/
@@ -44,7 +68,7 @@
 /****************************************************************/
 /*Video levels*/
 /****************************************************************/
-#define SYNC_SIZE 		 40	//Sets the size of the sync pulses nominal is 40 but lower values (20) might help in some cases
+#define SYNC_SIZE 		 40
 #define IRE(_x)          ((uint32_t)(((_x)+SYNC_SIZE)*255/3.3/147.5) << 8)   // 3.3V DAC output
 #define SYNC_LEVEL       IRE(-SYNC_SIZE)
 #define BLANKING_LEVEL   IRE(0)

@@ -18,23 +18,15 @@
 #include "esp_int_wdt.h"
 #include "esp_spiffs.h"
 
-//#define PERF  // some stats about where we spend our time
+#include "src/config.h"
 #include "src/emu.h"
 #include "src/video_out.h"
 
 // esp_8_bit
 // Atari 8 computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
 // Supports NTSC/PAL composite video, Bluetooth Classic keyboards and joysticks
-
-//  Choose one of the video standards: PAL,NTSC
-#define VIDEO_STANDARD NTSC
-
-//  Choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI
-#define EMULATOR EMU_NES
-
-//  Many emus work fine on a single core (S2), file system access can cause a little flickering
-//  #define SINGLE_CORE
-
+// Edit src/config.h to setup emulator and video standard
+ 
 // The filesystem should contain folders named for each of the emulators i.e.
 //    atari800
 //    nofrendo
