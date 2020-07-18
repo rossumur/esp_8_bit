@@ -340,8 +340,7 @@ uint32_t us() {
 
 static int usec(float us)
 {
-    uint32_t r = (uint32_t)(us*_sample_rate);
-    return ((r + _samples_per_cc)/(_samples_per_cc << 1))*(_samples_per_cc << 1);  // multiple of color clock, word align
+    return _samples_per_cc * round(us * _sample_rate / _samples_per_cc);  // multiple of color clock, word align
 }
 //=====================================================================================
 //AUDIO
@@ -516,10 +515,10 @@ void IRAM_ATTR burst(uint16_t* line)
         case 4:
             // 4 samples per color clock
 			//Breezeway (delay colorburst by two cycles following the sync pulse)
-			for (int i = _hsync; i < _hsync + 8; i++)
+			for (int i = _hsync + 8; i < _hsync + 16; i++)
 				line[i] = BLANKING_LEVEL;
-            //Color burst
-			for (i = _hsync + 8; i < _hsync + 8 + (4*10); i += 4) {
+            //Color burst 9 cycles
+			for (i = _hsync + 16; i < _hsync + 16 + (4*9); i += 4) {
                 line[i+1] = BLANKING_LEVEL;
                 line[i+0] = BLANKING_LEVEL + BLANKING_LEVEL/2;
                 line[i+3] = BLANKING_LEVEL;
@@ -547,7 +546,7 @@ void IRAM_ATTR sync(uint16_t* line, int syncwidth)
 	for (int i = 0; i < 8; i++)
         line[i] = BLANKING_LEVEL;
     //Sync pulse
-	for (int i = 8; i < syncwidth; i++)
+	for (int i = 8; i < syncwidth + 8; i++)
         line[i] = SYNC_LEVEL;
 }
 
