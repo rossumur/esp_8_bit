@@ -48,19 +48,20 @@ SNES       _
            -  	
 	
 ```
-Audio is on pin 18 by default but can be remapped.
-
-Enable either NES or SNES controller with
-#define NES_CONTROLLER or #define SNES_CONTROLLER (not both) in ir_input.h file
-
-Before you compile the sketch you have 2 choices:
+Before you compile the sketch you have a few choices/options (in src/config.h):
 ```
 //  Choose one of the video standards: PAL, NTSC
 #define VIDEO_STANDARD NTSC
 
 //  Choose one of the following emulators: EMU_NES,EMU_SMS, EMU_ATARI
 #define EMULATOR EMU_ATARI
+
+Enable NES or SNES controller with
+#define NES_CONTROLLER or #define SNES_CONTROLLER (but not both) as well as other IR units
+
+Audio is on pin 18 by default but can be remapped, this is true for the other IOs except video which has to be on pin 25/26.
 ```
+
 Build and run the sketch and connect to an old-timey composite input. The first time the sketch runs in will auto-populate the file system with a selection of fine old and new homebrew games and demos. This process only happens once and takes about ~20 seconds so don't be frightened by the black screen.
 
 # The Emulated
