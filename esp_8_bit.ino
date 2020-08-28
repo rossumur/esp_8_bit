@@ -17,6 +17,8 @@
 #include "esp_system.h"
 #include "esp_int_wdt.h"
 #include "esp_spiffs.h"
+#include "esp_vfs_fat.h"
+#include "sdmmc_cmd.h"
 
 #include "src/config.h"
 #include "src/emu.h"
@@ -77,7 +79,7 @@ void emu_loop()
 // dual core mode runs emulator on comms core
 void emu_task(void* arg)
 {
-    printf("emu_task %s running on core %d at %dmhz\n",
+    printf("emu_task %s running on core %d at %dHz\n",
       _emu->name.c_str(),xPortGetCoreID(),rtc_clk_cpu_freq_value(rtc_clk_cpu_freq_get()));
     emu_init();
     for (;;)
@@ -86,6 +88,33 @@ void emu_task(void* arg)
 
 esp_err_t mount_filesystem()
 {
+#ifdef USE_SD_CARD
+//Use SD card for file storage, formated as FAT with 8.3 filenames
+  sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+  //host.command_timeout_ms=200;
+  //host.max_freq_khz = SDMMC_FREQ_PROBING;
+
+  sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
+  slot_config.gpio_miso =  (gpio_num_t)CONFIG_SD_MISO;
+  slot_config.gpio_mosi =  (gpio_num_t)CONFIG_SD_MOSI;
+  slot_config.gpio_sck =   (gpio_num_t)CONFIG_SD_SCK;
+  slot_config.gpio_cs =    (gpio_num_t)CONFIG_SD_CS;
+  slot_config.dma_channel = 2;
+
+  esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+    .format_if_mount_failed = false,
+    .max_files = 2
+  };
+
+  //This will mount the SD card. The file structure is compatible with normal spiffs... 
+  sdmmc_card_t *card;
+  esp_err_t e = esp_vfs_fat_sdmmc_mount("", &host, &slot_config, &mount_config, &card);
+
+  if (e) printf("Failed to mount SD card");
+  else sdmmc_card_print_info(stdout, card);  // Card has been initialized, print its properties
+
+#else
+//Use ESP spiffs
   printf("\n\n\nesp_8_bit\n\nmounting spiffs (will take ~15 seconds if formatting for the first time)....\n");
   uint32_t t = millis();
   esp_vfs_spiffs_conf_t conf = {
@@ -99,7 +128,9 @@ esp_err_t mount_filesystem()
     printf("Failed to mount or format filesystem: %d. Use 'ESP32 Sketch Data Upload' from 'Tools' menu\n",e);
   vTaskDelay(1);
   printf("... mounted in %d ms\n",millis()-t);
-  return e;
+#endif
+
+return e;
 }
 
 void setup()

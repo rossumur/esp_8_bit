@@ -1,6 +1,6 @@
 # **ESP_8_BIT:** Atari 8 bit computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
 ## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction
-## Supports classic NES (or SNES) one or two controllers hardwired to the ESP32. SELECT + LEFT to access file menu. SELECT + START -> reset
+## Supports classic NES (or SNES) one or two controllers hardwired to the ESP32. SELECT + LEFT to access file menu. SELECT + START -> reset, SD card support FAT 8.3 filenames
 
 ![ESP_8_BIT](img/esp8bit.jpg)
 
@@ -9,25 +9,32 @@
 ```
     -----------
     |         |
-    |      25 |------------------> video out
+    |      25 |-------------> video out
     |         |
-    |      18 |---/\/\/\/----|---> audio out
-    |         |     1k       |
-    |         |             ---
-    |  ESP32  |             --- 10nf
-    |         |              |
-    |         |              v gnd
+    |      18 |-/\/\/\/--|--> audio out
+    |         |   1k     |
+    |         |         ---
+    |  ESP32  |         --- 10nf
+    |         |          |
+    |         |          v gnd
     |         |
-    |      17 |------------------> NES (or SNES) controller DATA B
-    |      21 |------------------> NES (or SNES) controller DATA A
-    |      22 |------------------> NES (or SNES) controller CLOCK A&B
-    |      27 |------------------> NES (or SNES) controller LATCH A&B
-    |         |          3.3v <--> NES (or SNES) controller VCC A&B
-    |         |           gnd <--> NES (or SNES) controller GND A&B
+    |      17 |-------------> NES (or SNES) controller DATA B
+    |      21 |-------------> NES (or SNES) controller DATA A
+    |      22 |-------------> NES (or SNES) controller CLOCK A&B
+    |      27 |-------------> NES (or SNES) controller LATCH A&B
+    |         |      3.3v <-> NES (or SNES) controller VCC A&B
+    |         |       gnd <-> NES (or SNES) controller GND A&B
     |         |
-    |         |     3.3v <--+-+   IR Receiver
-    |         |      gnd <--|  )  TSOP4838 etc.
-    |       0 |-------------+-+   (Optional)
+    |      15 |-------------> SD card CS
+    |      13 |-------------> SD card MOSI
+    |      14 |-------------> SD card SCLK
+    |      12 |-------------> SD card MISO
+    |         |      3.3v <-> SD card Vcc
+    |         |       gnd <-> SD card GND
+    |         |
+    |         |   3.3v <--+-+  IR Receiver
+    |         |    gnd <--|  ) TSOP4838 etc.
+    |       0 |-----------+-+  (Optional)
     -----------
 
 NES        ___
@@ -50,14 +57,18 @@ SNES       _
 ```
 Before you compile the sketch you have a few choices/options (in src/config.h):
 ```
-//  Choose one of the video standards: PAL, NTSC
+// Choose one of the video standards: PAL, NTSC
 #define VIDEO_STANDARD NTSC
 
-//  Choose one of the following emulators: EMU_NES,EMU_SMS, EMU_ATARI
+// Choose one of the following emulators: EMU_NES,EMU_SMS, EMU_ATARI
 #define EMULATOR EMU_ATARI
 
-Enable NES or SNES controller with
+// Enable NES or SNES controller with
 #define NES_CONTROLLER or #define SNES_CONTROLLER (but not both) as well as other IR units
+
+// Define this to enable SD card with FAT 8.3 filenames
+// Note that each emulator has its own folder. Place ROMs under /nofrendo for NES, /smsplus for SMS and /atari800 for atari
+#define USE_SD_CARD
 
 Audio is on pin 18 by default but can be remapped, this is true for the other IOs except video which has to be on pin 25/26.
 ```

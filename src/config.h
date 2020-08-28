@@ -56,6 +56,15 @@
 #define NES_CTRL_LATCH 27  //    # LATCH	(yellow)
 #define NES_CTRL_CLK 22    //    # CLOCK 	(green)
 
+// Define this to enable SD card with FAT 8.3 filenames
+// Note that each emulator has its own folder. Place ROMs under /nonfredo for NES, /smsplus for SMS and /atari800 for atari
+//#define USE_SD_CARD
+// SD card pin mapping
+#define CONFIG_SD_CS 15
+#define CONFIG_SD_MOSI 13
+#define CONFIG_SD_SCK 14
+#define CONFIG_SD_MISO 12
+
 /****************************************************************/
 /*Controller support*/
 /****************************************************************/
