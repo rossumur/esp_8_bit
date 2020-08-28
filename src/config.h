@@ -1,3 +1,4 @@
+#pragma GCC optimize ("O2")
 #pragma once
 #define PAL 0
 #define NTSC 1
