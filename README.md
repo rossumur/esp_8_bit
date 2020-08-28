@@ -6,6 +6,10 @@
 
 **ESP_8_BIT** is designed to run on the ESP32 within the Arduino IDE framework. See it in action on [Youtube](https://www.youtube.com/watch?v=qFRkfeuTUrU). Schematic is pretty simple:
 
+![Build](img/gameboy_fit.png)
+
+The build can fit inside a gameboy clam shell with real NES connectors.
+
 ```
     -----------
     |         |
