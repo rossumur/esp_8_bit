@@ -11,35 +11,34 @@
 The build can fit inside a gameboy clam shell with real NES connectors.
 
 ```
-    -----------
-    |         |
-    |      25 |-------------> video out
-    |         |
-    |      18 |-/\/\/\/--|--> audio out
-    |         |   1k     |
-    |         |         ---
-    |  ESP32  |         --- 10nf
-    |         |          |
-    |         |          v gnd
-    |         |
-    |      17 |-------------> NES (or SNES) controller DATA B
-    |      21 |-------------> NES (or SNES) controller DATA A
-    |      22 |-------------> NES (or SNES) controller CLOCK A&B
-    |      27 |-------------> NES (or SNES) controller LATCH A&B
-    |         |      3.3v <-> NES (or SNES) controller VCC A&B
-    |         |       gnd <-> NES (or SNES) controller GND A&B
-    |         |
-    |      15 |-------------> SD card CS
-    |      13 |-------------> SD card MOSI
-    |      14 |-------------> SD card SCLK
-    |      12 |-------------> SD card MISO
-    |         |      3.3v <-> SD card Vcc
-    |         |       gnd <-> SD card GND
-    |         |
-    |         |   3.3v <--+-+  IR Receiver
-    |         |    gnd <--|  ) TSOP4838 etc.
-    |       0 |-----------+-+  (Optional)
-    -----------
+     ---------  
+    |         | 
+    |      25 |------------> video out
+    |         | 
+    |      18 |--/\/\/--+--> audio out
+    |         |   1k    |
+    |         |        === 10nf
+    |  ESP32  |         |
+    |         |         v gnd
+    |         | 
+    |      17 |------------> NES (or SNES) controller DATA B
+    |      21 |------------> NES (or SNES) controller DATA A
+    |      22 |------------> NES (or SNES) controller CLOCK A&B
+    |      27 |------------> NES (or SNES) controller LATCH A&B
+    |         |     3.3v <-> NES (or SNES) controller VCC A&B
+    |         |      gnd <-> NES (or SNES) controller GND A&B
+    |         | 
+    |      15 |------------> SD card CS
+    |      13 |------------> SD card MOSI
+    |      14 |------------> SD card SCLK
+    |      12 |------------> SD card MISO
+    |         |     3.3v <-> SD card Vcc
+    |         |      gnd <-> SD card GND
+    |         | 
+    |         |  3.3v <--+-|  IR Receiver
+    |         |   gnd <--|  ) TSOP4838 etc.
+    |       0 |----------+-|  (Optional)
+     ---------
 
 NES        ___
     DATA  |o o| NC

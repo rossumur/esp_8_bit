@@ -90,6 +90,8 @@ esp_err_t mount_filesystem()
 {
 #ifdef USE_SD_CARD
 //Use SD card for file storage, formated as FAT with 8.3 filenames
+  vTaskDelay(300 / portTICK_RATE_MS); //a small delay to let SD card power up
+
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
   //host.command_timeout_ms=200;
   //host.max_freq_khz = SDMMC_FREQ_PROBING;
