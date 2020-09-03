@@ -1,3 +1,4 @@
+#pragma GCC optimize ("O2")
 
 #include "shared.h"
 
@@ -216,6 +217,21 @@ void render_init(void)
     render_reset();
 }
 
+//Avoid massive lookup table (in slow EEPROM), use CPU which is fast	//Corn
+inline uint8_t render_pixel(uint8 bx, uint8 sx)
+{
+	if (bx & 0x40)
+		return (bx & 0x7F);	//Return the input
+	if (bx & 0x20)	//bp
+	{
+		if ((bx & 0x0F) || !(sx & 0x0F))	//b & s
+			return (bx & 0x7F);	//Return the input
+		return (sx & 0x0F) | 0x10 | 0x40;
+	}
+	if (!(sx & 0x0F))	//s
+		return (bx & 0x7F);	//Return the input
+	return (sx & 0x0F) | 0x10 | 0x40;
+}
 
 /* Reset the rendering data */
 void render_reset(void)
@@ -531,7 +547,7 @@ void render_obj(int line)
                         uint8 bg = linebuf_ptr[x];
     
                         /* Look up result */
-                        linebuf_ptr[x] = lut[(bg << 8) | (sp)];
+                        linebuf_ptr[x] = render_pixel(bg ,sp);	//linebuf_ptr[x] = lut[(bg << 8) | (sp)];
     
                         /* Set sprite collision flag */
                         if(bg & 0x40) vdp.status |= 0x20;
@@ -557,7 +573,7 @@ void render_obj(int line)
                         uint8 bg = linebuf_ptr[x];
     
                         /* Look up result */
-                        linebuf_ptr[x] = lut[(bg << 8) | (sp)];
+                        linebuf_ptr[x] = render_pixel(bg ,sp);	//linebuf_ptr[x] = lut[(bg << 8) | (sp)];
     
                         /* Set sprite collision flag */
                         if(bg & 0x40) vdp.status |= 0x20;
