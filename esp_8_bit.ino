@@ -19,6 +19,7 @@
 #include "esp_spiffs.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
+#include "soc/efuse_reg.h"
 
 #include "src/config.h"
 #include "src/emu.h"
@@ -137,6 +138,10 @@ return e;
 
 void setup()
 { 
+  int silicon_version = (REG_READ(EFUSE_BLK0_RDATA3_REG) >> 15) & 1;
+  if (silicon_version == 0)
+    printf("Warning this revision of the chip has an issue with the APLL and will not work properly!\n");
+      
   rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  
   mount_filesystem();                       // mount the filesystem!
   _emu = NewEmulator();                     // create the emulator!
