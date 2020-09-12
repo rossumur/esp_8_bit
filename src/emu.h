@@ -29,7 +29,7 @@
 #include <map>
 
 #include "hid_server/hid_server.h"
-#include "config.h"
+#include "../config.h"
 
 #define EMU_ATARI 1
 #define EMU_NES 2

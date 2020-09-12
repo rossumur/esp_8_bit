@@ -78,7 +78,7 @@
 /****************************************************************/
 /*Video levels*/
 /****************************************************************/
-#define SYNC_SIZE 		 40
+#define SYNC_SIZE        40 //Lowering this to like 35 can help sync issues at times
 #define IRE(_x)          ((uint32_t)(((_x)+SYNC_SIZE)*255/3.3/147.5) << 8)   // 3.3V DAC output
 #define SYNC_LEVEL       IRE(-SYNC_SIZE)
 #define BLANKING_LEVEL   IRE(0)

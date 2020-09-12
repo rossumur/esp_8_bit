@@ -21,7 +21,7 @@
 #include "sdmmc_cmd.h"
 #include "soc/efuse_reg.h"
 
-#include "src/config.h"
+#include "config.h"
 #include "src/emu.h"
 #include "src/video_out.h"
 

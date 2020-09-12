@@ -36,7 +36,7 @@
 #include "driver/gpio.h"
 #include "driver/i2s.h"
 
-#include "config.h"
+#include "../config.h"
 
 #ifdef IR_PIN || NES_CTRL_LATCH
 #include "ir_input.h"  // ir & HW peripherals
