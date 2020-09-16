@@ -15,6 +15,8 @@
 ** SOFTWARE.
 */
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "emu.h"
 #include "media.h"
 
@@ -23,6 +25,8 @@ extern "C" {
 #include "nofrendo/event.h"
 };
 #include "math.h"
+
+//#define calc_palettes	//enabling this will overwrite the palette values at boot time
 
 using namespace std;
 
@@ -40,7 +44,7 @@ uint32_t nes_3_phase[64] = {
     0x45454500,0x423B4200,0x403B4400,0x3D3D4500,0x3B404400,0x3B424200,0x3B444000,0x3D453D00,
     0x40443B00,0x42423B00,0x44403B00,0x453D3D00,0x443B4000,0x39393900,0x17171700,0x17171700,
 };
-uint32_t nes_4_phase[64] = {
+/*uint32_t nes_4_phase[64] = {
     0x2C2C2C2C,0x241D1F26,0x221D2227,0x1F1D2426,0x1D1F2624,0x1D222722,0x1D24261F,0x1F26241D,
     0x2227221D,0x24261F1D,0x26241D1F,0x27221D22,0x261F1D24,0x14141414,0x14141414,0x14141414,
     0x38383838,0x2C25272E,0x2A252A2F,0x27252C2E,0x25272E2C,0x252A2F2A,0x252C2E27,0x272E2C25,
@@ -49,11 +53,22 @@ uint32_t nes_4_phase[64] = {
     0x373C3732,0x3A3C3533,0x3C3A3335,0x3C373237,0x3C35333A,0x2B2B2B2B,0x16161616,0x16161616,
     0x45454545,0x423B3D44,0x403B4045,0x3D3B4244,0x3B3D4442,0x3B404540,0x3B42443D,0x3D44423B,
     0x4045403B,0x42443D3B,0x44423B3D,0x45403B40,0x443D3B42,0x39393939,0x17171717,0x17171717,
+};*/
+
+//RGB palette from http://drag.wootest.net/misc/palgen.html -> YUV -> QAM on color carrier -> 4 phases sampled
+uint32_t nes_4_phase[64] = {
+	0x27272727,0x1B16191E,0x1D151921,0x1C151920,0x1A1A1F20,0x171E231C,0x171E231C,0x171C201A,
+	0x17191A18,0x1B1A1819,0x1D1C191A,0x1D1C191A,0x1C1A191C,0x17171717,0x17171717,0x17171717,
+	0x3A3A3A3A,0x2C1F1F2C,0x281A1E2D,0x231D282E,0x1E212F2C,0x1A263428,0x192A3423,0x1D2A3023,
+	0x23292822,0x28261F20,0x2A281F21,0x2B271F23,0x2D241F28,0x17171717,0x17171717,0x17171717,
+	0x50505050,0x3E2D2A3B,0x362B2F3A,0x332E373C,0x33374441,0x313A443C,0x303D4437,0x2F414332,
+	0x34413D30,0x393E342E,0x3D3A2B2F,0x41352733,0x43312839,0x21212121,0x17171717,0x17171717,
+	0x50505050,0x48414047,0x443F4146,0x43404447,0x44454B4A,0x43464B47,0x42484B45,0x424A4B43,
+	0x444A4842,0x46494442,0x48474142,0x4A453F44,0x4A433F46,0x3C3C3C3C,0x17171717,0x17171717
 };
 
-
 // PAL yuyv table, must be in RAM
-uint32_t _nes_yuv_4_phase_pal[] = {
+/*uint32_t _nes_yuv_4_phase_pal[] = {
     0x31313131,0x2D21202B,0x2720252D,0x21212B2C,0x1D23302A,0x1B263127,0x1C293023,0x202B2D22,
     0x262B2722,0x2C2B2122,0x2F2B1E23,0x31291F27,0x30251F2A,0x18181818,0x19191919,0x19191919,
     0x3D3D3D3D,0x34292833,0x2F282D34,0x29283334,0x252B3732,0x232E392E,0x2431382B,0x28333429,
@@ -71,86 +86,101 @@ uint32_t _nes_yuv_4_phase_pal[] = {
     0x3D423B35,0x37414136,0x323F4538,0x313C473B,0x3239463F,0x2F2F2F2F,0x1A1A1A1A,0x1A1A1A1A,
     0x49494949,0x3D414845,0x43404245,0x463F3D44,0x453D3B43,0x453E3B42,0x45423B3F,0x46473E3E,
     0x454A433E,0x3E48463D,0x3943483E,0x38404A42,0x39404B44,0x3E3E3E3E,0x1B1B1B1B,0x1B1B1B1B,
+};*/
+
+//RGB palette from http://drag.wootest.net/misc/palgen.html -> YUV -> QAM on color carrier -> 4 phases sampled
+uint32_t _nes_yuv_4_phase_pal[] = {
+	0x26262626,0x1A10151F,0x1B0E1523,0x1B0F1622,0x16161F20,0x101C261A,0x101E2618,0x111B2117,
+	0x14161815,0x19181516,0x1C1A1517,0x1C1A1517,0x1B16151A,0x14141414,0x14141414,0x14141414,
+	0x3C3C3C3C,0x30181931,0x2B111933,0x21152834,0x161C3630,0x0F253E28,0x0D2C3E1F,0x152D371F,
+	0x202B291E,0x2A281A1C,0x2E29191D,0x2F281920,0x3121192A,0x14141414,0x14141414,0x14141414,
+	0x55555555,0x47292442,0x3B262C41,0x332A3942,0x2E354E47,0x2C3B4E3F,0x2A414D36,0x29494D2E,
+	0x3249422B,0x3C453329,0x463F252C,0x4D371E34,0x4F2F1E3E,0x1F1F1F1F,0x14141414,0x14141414,
+	0x55555555,0x4F42404D,0x493F424C,0x4541484C,0x4548524F,0x434A524C,0x424C5248,0x43505245,
+	0x46514D42,0x4A4F4742,0x4E4C4144,0x52483E47,0x52453E4B,0x3F3F3F3F,0x14141414,0x14141414,
+	
+	0x26262626,0x15101A1F,0x150E1B23,0x160F1B22,0x1F161620,0x261C101A,0x261E1018,0x211B1117,
+	0x18161415,0x15181916,0x151A1C17,0x151A1C17,0x15161B1A,0x14141414,0x14141414,0x14141414,
+	0x3C3C3C3C,0x19183031,0x19112B33,0x28152134,0x361C1630,0x3E250F28,0x3E2C0D1F,0x372D151F,
+	0x292B201E,0x1A282A1C,0x19292E1D,0x19282F20,0x1921312A,0x14141414,0x14141414,0x14141414,
+	0x55555555,0x24294742,0x2C263B41,0x392A3342,0x4E352E47,0x4E3B2C3F,0x4D412A36,0x4D49292E,
+	0x4249322B,0x33453C29,0x253F462C,0x1E374D34,0x1E2F4F3E,0x1F1F1F1F,0x14141414,0x14141414,
+	0x55555555,0x40424F4D,0x423F494C,0x4841454C,0x5248454F,0x524A434C,0x524C4248,0x52504345,
+	0x4D514642,0x474F4A42,0x414C4E44,0x3E485247,0x3E45524B,0x3F3F3F3F,0x14141414,0x14141414
 };
 
-static void make_nes_pal_uv(uint8_t *u,uint8_t *v)
-{
-    for (int c = 0; c < 16; c++) {
-        if (c == 0 || c > 12)
-            ;
-        else {
-            float a = 2*M_PI*(c-1)/12 + 2*M_PI*(180-33)/360;    // just guessing at hue adjustment for PAL
-            u[c] = cos(a)*127;
-            v[c] = sin(a)*127;
-
-            // get the phase offsets for even and odd pal lines
-            //_p0[c] = atan2(0.436798*u[c],0.614777*v[c])*256/(2*M_PI) + 192;
-            //_p1[c] = atan2(0.436798*u[c],-0.614777*v[c])*256/(2*M_PI) + 192;
-        }
-    }
-}
-
-// TODO. scale the u,v to fill range
-uint32_t yuv_palette(int r, int g, int b)
-{
-    float y = 0.299 * r + 0.587 *g + 0.114 * b;
-    float u = -0.147407 * r - 0.289391 * g + 0.436798 * b;
-    float v =  0.614777 * r - 0.514799 * g - 0.099978 * b;
-    int luma = y/255*(WHITE_LEVEL-BLACK_LEVEL) + BLACK_LEVEL;
-    uint8_t ui = u;
-    uint8_t vi = v;
-    return ((luma & 0xFF00) << 16) | ((ui & 0xF8) << 8) | (vi >> 3); // luma:0:u:v
-}
-
-void make_yuv_palette(const char* name, const uint32_t* pal, int len);
-
-extern rgb_t nes_palette[64];
-extern "C" void pal_generate();
-void make_alt_pal()
-{
-    pal_generate();
-    uint32_t pal[64];
-    for (int i = 0; i < 64; i++) {
-        auto p = nes_palette[i];
-        pal[i] = (p.r << 16) | (p.g << 8) | p.b;
-    }
-    make_yuv_palette("_nes_yuv",pal,64);
-}
-
-static const float _nes_luma[] = {
-    0.50,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.29,0.00,0.02,0.02,
-    0.75,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.45,0.24,0.04,0.04,
-    1.00,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.73,0.47,0.05,0.05,
-    1.00,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.90,0.77,0.07,0.07,
+#ifdef calc_palettes
+// RGB palette from http://drag.wootest.net/misc/palgen.html
+static const uint8_t _nes_r[] = {
+	0x46,0x00,0x00,0x02,0x35,0x57,0x5A,0x41,0x12,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x9D,0x00,0x05,0x57,0x9F,0xCC,0xCF,0xA4,0x5C,0x0B,0x00,0x00,0x00,0x00,0x00,0x00,
+	0xFE,0x1F,0x53,0x98,0xFC,0xFF,0xFF,0xFF,0xC4,0x71,0x28,0x00,0x00,0x2B,0x00,0x00,
+	0xFE,0x9E,0xAF,0xD0,0xFE,0xFF,0xFF,0xFF,0xE7,0xC5,0xA6,0x94,0x92,0xA7,0x00,0x00
+};
+static const uint8_t _nes_g[] = {
+	0x46,0x06,0x06,0x06,0x03,0x00,0x00,0x00,0x02,0x14,0x1E,0x1E,0x15,0x00,0x00,0x00,
+	0x9D,0x4A,0x30,0x18,0x07,0x02,0x0B,0x23,0x3F,0x58,0x66,0x67,0x5E,0x00,0x00,0x00,
+	0xFF,0x9E,0x76,0x65,0x67,0x6C,0x74,0x80,0x9A,0xB3,0xC4,0xC8,0xBF,0x2B,0x00,0x00,
+	0xFF,0xD5,0xC0,0xB8,0xBF,0xC0,0xC3,0xCA,0xD5,0xDF,0xE6,0xE8,0xE4,0xA7,0x00,0x00
+};
+static const uint8_t _nes_b[] = {
+	0x46,0x5A,0x78,0x73,0x4C,0x0E,0x00,0x00,0x00,0x00,0x00,0x00,0x21,0x00,0x00,0x00,
+	0x9D,0xB9,0xE1,0xDA,0xA7,0x55,0x00,0x00,0x00,0x00,0x00,0x13,0x6E,0x00,0x00,0x00,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xB3,0x66,0x14,0x00,0x00,0x21,0x74,0xD0,0x2B,0x00,0x00,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xE0,0xBD,0x9C,0x8B,0x8E,0xA3,0xC5,0xEB,0xA7,0x00,0x00
 };
 
-static void make_nes_palette(int phases)
+//Makes four samples (one cycle) using QAM modulation on the color carrier for NTSC from a RGB palette
+void make_ntsc_palette()
 {
-    float saturation = 0.5;
-    printf("uint32_t nes_%d_phase[64] = {\n",phases);
-    for (int i = 0; i < 64; i++) {
-        int chroma = (i & 0xF);
-        int luma = _nes_luma[i]*(WHITE_LEVEL-BLACK_LEVEL) + BLANKING_LEVEL;
-
-        int p[8] = {0};
-        for (int j = 0; j < phases; j++)
-            p[j] = luma;  // 0x1D is really black, really BLANKING_LEVEL
-
-        chroma -= 1;
-        if (chroma >= 0 && chroma < 12) {
-            for (int j = 0; j < phases; j++)
-                p[j] += sin(2*M_PI*(5 + chroma + (12/phases)*j)/12) * BLANKING_LEVEL/2*saturation;   // not sure why 5 is the right offset
-        }
-
-        uint32_t pi = 0;
-        for (int j = 0; j < 4; j++)
-            pi = (pi << 8) | p[j] >> 8;
-        printf("0x%08X,",pi);
-        if ((i & 7) == 7)
-            printf("\n");
-    }
-    printf("};\n");
+	float ofs = 23.f;		//black level
+    float amp = 57.f;		//signal span
+    float hue = M_PI;		//hue correction if any...
+	float saturation = 0.5f;	//Color saturation
+	for (int j = 0; j < 64; j++)
+	{
+		float y = (0.299f * _nes_r[j] + 0.587f * _nes_g[j] + 0.114f * _nes_b[j])/255.f;
+		float u = (-0.147407f * _nes_r[j] - 0.289391f * _nes_g[j] + 0.436798f * _nes_b[j])/255.f;
+		float v = (0.614777f * _nes_r[j] - 0.514799f * _nes_g[j] - 0.099978f * _nes_b[j])/255.f;
+		float wt = 0;
+		uint32_t sampl = 0;
+		for (int i = 3; i >= 0; i--)
+		{
+			sampl |= (uint32_t) round(ofs + amp * (y + saturation * (u * sinf(wt+hue) + v * cosf(wt+hue)))) << (i*8);
+			wt += M_PI/2.f;
+		}
+		nes_4_phase[j] = sampl;
+		//printf("0x%08x\n", sampl);
+	}
 }
+
+//Makes four samples (one cycle) using QAM modulation on the color carrier for PAL (even/odd lines) from a RGB palette
+void make_pal_palette()
+{
+	float ofs = 20.f;		//black level
+    float amp = 65.f;		//signal span
+    float hue = M_PI;		//hue correction if any...
+	float saturation = 0.8f;	//Color saturation
+	for (int j = 0; j < 64; j++)
+	{
+		float y = (0.299f * _nes_r[j] + 0.587f * _nes_g[j] + 0.114f * _nes_b[j])/255.f;
+		float u = (-0.147407f * _nes_r[j] - 0.289391f * _nes_g[j] + 0.436798f * _nes_b[j])/255.f;
+		float v = (0.614777f * _nes_r[j] - 0.514799f * _nes_g[j] - 0.099978f * _nes_b[j])/255.f;
+		float wt = 0;
+		uint32_t e_sampl = 0;
+		uint32_t o_sampl = 0;
+		for (int i = 3; i >= 0; i--)
+		{
+			e_sampl |= (uint32_t) round(ofs + amp * (y + saturation * (u * sinf(wt+hue) + v * cosf(wt+hue)))) << (i*8);
+			o_sampl |= (uint32_t) round(ofs + amp * (y + saturation * (u * sinf(wt-hue) - v * cosf(wt-hue)))) << (i*8);
+			wt += M_PI/2.f;
+		}
+		_nes_yuv_4_phase_pal[j] = e_sampl;
+		_nes_yuv_4_phase_pal[j+64] = o_sampl;
+		//printf("0x%08x  0x%08x\n", e_sampl, o_sampl);
+	}
+}
+#endif
 
 uint8_t* _nofrendo_rom = 0;
 extern "C"
@@ -215,13 +245,15 @@ public:
         _ext = _nes_ext;
         _help = _nes_help;
         _audio_frequency = audio_frequency;
+		gen_palettes();
     }
 
     virtual void gen_palettes()
     {
-        make_nes_palette(3);
-        make_nes_palette(4);
-        make_alt_pal();
+#ifdef calc_palettes
+		make_ntsc_palette();
+        make_pal_palette();
+#endif
     }
 
     virtual int info(const string& file, vector<string>& strs)
@@ -437,7 +469,10 @@ public:
             return -1;
         }
 
-        nes_emulate_init(path.c_str(),width,height);
+        if (nes_emulate_init(path.c_str(),width,height))
+			printf("NES init failed\n");
+		
+		vTaskDelay(100 / portTICK_RATE_MS);
         _lines = nes_emulate_frame(true);   // first frame!
         return 0;
     }

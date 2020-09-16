@@ -1,38 +1,81 @@
 # **ESP_8_BIT:** Atari 8 bit computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
 ## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction
+## Supports classic NES (or SNES) one or two controllers hardwired to the ESP32. SELECT + LEFT to access file menu. SELECT + START -> reset, SD card support FAT 8.3 filenames
 
 ![ESP_8_BIT](img/esp8bit.jpg)
 
 **ESP_8_BIT** is designed to run on the ESP32 within the Arduino IDE framework. See it in action on [Youtube](https://www.youtube.com/watch?v=qFRkfeuTUrU). Schematic is pretty simple:
 
-```
-    -----------
-    |         |
-    |      25 |------------------> video out
-    |         |
-    |      18 |---/\/\/\/----|---> audio out
-    |         |     1k       |
-    |         |             ---
-    |  ESP32  |             --- 10nf
-    |         |              |
-    |         |              v gnd
-    |         |
-    |         |     3.3v <--+-+   IR Receiver
-    |         |      gnd <--|  )  TSOP4838 etc.
-    |       0 |-------------+-+   (Optional)
-    -----------
+![Build](img/gameboy_fit.png)
+
+The build can fit inside a gameboy clam shell with real NES connectors.
 
 ```
-Audio is on pin 18 by default but can be remapped.
+     ---------  
+    |         | 
+    |      25 |------------> video out
+    |         | 
+    |      18 |--/\/\/--+--> audio out
+    |         |   1k    |
+    |         |        === 10nf
+    |  ESP32  |         |
+    |         |         v gnd
+    |         | 
+    |      17 |------------> NES (or SNES) controller DATA B
+    |      21 |------------> NES (or SNES) controller DATA A
+    |      22 |------------> NES (or SNES) controller CLOCK A&B
+    |      27 |------------> NES (or SNES) controller LATCH A&B
+    |         |     3.3v <-> NES (or SNES) controller VCC A&B
+    |         |      gnd <-> NES (or SNES) controller GND A&B
+    |         | 
+    |      15 |------------> SD card CS
+    |      13 |------------> SD card MOSI
+    |      14 |------------> SD card SCLK
+    |      12 |------------> SD card MISO
+    |         |     3.3v <-> SD card Vcc
+    |         |      gnd <-> SD card GND
+    |         | 
+    |         |  3.3v <--+-|  IR Receiver
+    |         |   gnd <--|  ) TSOP4838 etc.
+    |       0 |----------+-|  (Optional)
+     ---------
 
-Before you compile the sketch you have 2 choices:
+NES        ___
+    DATA  |o o| NC
+    LATCH |o o| NC
+    CLOCK |o o/ 3V3
+    GND   |o_/
+
+SNES       _
+    3V3   |o|
+    CLOCK |o|
+    LATCH |o|
+    DATA  |o|
+          |-|
+    NC    |o|
+    NC    |o|
+    GND   |o|
+           -  	
+	
 ```
-//  Choose one of the video standards: PAL, NTSC
+Before you compile the sketch you have a few choices/options (in src/config.h):
+```
+// Choose one of the video standards: PAL, NTSC
 #define VIDEO_STANDARD NTSC
 
-//  Choose one of the following emulators: EMU_NES,EMU_SMS, EMU_ATARI
+// Choose one of the following emulators: EMU_NES,EMU_SMS, EMU_ATARI
 #define EMULATOR EMU_ATARI
+
+// Enable NES or SNES controller with
+#define NES_CONTROLLER or #define SNES_CONTROLLER (but not both) as well as other IR units
+
+// Define this to enable SD card with FAT 8.3 filenames
+// Note that each emulator has its own folder. Place ROMs under /nofrendo for NES, /smsplus for SMS and /atari800 for atari
+#define USE_SD_CARD
+
+Audio is on pin 18 by default but can be remapped, this is true for the other IOs except video which has to be on pin 25/26.
 ```
+
 Build and run the sketch and connect to an old-timey composite input. The first time the sketch runs in will auto-populate the file system with a selection of fine old and new homebrew games and demos. This process only happens once and takes about ~20 seconds so don't be frightened by the black screen.
 
 # The Emulated
