@@ -144,7 +144,7 @@ Its intended use is to be able to synchronize audio sources running at slightly 
 | NTSC | 14.318182Mhz | 14.318180Mhz |
 | PAL | 17.734475Mhz | 17.734476Mhz |
 
-As you can see, the APLL frequencies can be tuned to be incredibly close to the desired frequencies. Now we have a DAC running at an integer multiple of the color carrier we are off to the races with stable color on NTSC and PAL. From this point it is easy to construct color palettes that map indexed color to carrier phases / amplitudes.
+As you can see the APLL frequencies can be tuned to be incredibly close to the desired frequencies. Now we have a DAC running at an integer multiple of the color carrier we are off to the races with stable color on NTSC and PAL. From this point it is easy to construct color palettes that map indexed color to carrier phases / amplitudes.
 
 ![colorburst](img/colorburst.png)
 
