@@ -17,7 +17,7 @@
 
 #define VIDEO_PIN   26
 #define AUDIO_PIN   18  // can be any pin
-#define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
+//#define IR_PIN      0   // TSOP4838 or equivalent on any pin if desired
 
 int _pal_ = 0;
 
@@ -97,7 +97,7 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
         _dma_desc[i].buf = (uint8_t*)heap_caps_calloc(1, n, MALLOC_CAP_DMA);
         if (!_dma_desc[i].buf)
             return -1;
-        
+
         _dma_desc[i].owner = 1;
         _dma_desc[i].eof = 1;
         _dma_desc[i].length = n;
@@ -354,7 +354,7 @@ void video_init(int samples_per_cc, int machine, const uint32_t* palette, int nt
         pal_init();
         _pal_ = 1;
     }
-    
+
     _active_lines = 240;
     video_init_hw(_line_width,_samples_per_cc);    // init the hardware
 }
@@ -439,7 +439,7 @@ void IRAM_ATTR blit_pal(uint8_t* src, uint16_t* dst)
 
                 i += 4;
                 c = *((uint32_t*)(src+i));
-                
+
                 // make 5 colors out of 4 by interpolating y: 0000 0111 1122 2223 3333
                 c0 = c;
                 c1 = c >> 8;
@@ -478,7 +478,7 @@ void IRAM_ATTR blit_pal(uint8_t* src, uint16_t* dst)
               p = _palette + 64;
             dst += 88;
             break;
-          
+
         case EMU_SMS:
             // 192 of 288 color clocks wide: roughly correct aspect ratio
             dst += 88;

@@ -62,10 +62,10 @@ void setup()
   {
     _bufLines[y] = linePointer;
     linePointer += 256;
-    yMask = (((y/15)<<4)&0xF0);
+    yMask = ((y/15)&0x0F);
     for (int x = 0; x < 256; x++)
     {
-      _bufLines[y][x] = ((x>>4)&0x0F) | yMask;
+      _bufLines[y][x] = (((x>>4)<<4) | yMask);
     }
   }
 }
