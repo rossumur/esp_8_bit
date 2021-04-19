@@ -3,6 +3,7 @@
 This project started with __rossumer__'s
 [ESP_8_BIT project](https://github.com/rossumur/esp_8_bit)
 and cut away everything unrelated to generating a color composite video signal.
+This will become a foundation for other composite video projects.
 
 ESP32 GPIO25 is the video signal output pin.
 
