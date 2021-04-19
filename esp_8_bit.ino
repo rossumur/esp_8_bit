@@ -128,7 +128,7 @@ void loop()
   if (!_inited) {
     if (_lines) {
       printf("video_init\n");
-      video_init(4,EMU_SMS,ntsc_RGB332,VIDEO_STANDARD); // start the A/V pump
+      video_init(4,ntsc_RGB332,VIDEO_STANDARD); // start the A/V pump
       _inited = true;
     } else {
       vTaskDelay(1);
