@@ -29,5 +29,4 @@ PAL support. I have no PAL TV to test against.
 
 ----------
 
-## Thanks to *rossumur* who worked out all the color composite video generation
-## code, without which this project would not have been possible.
+## Thanks to *rossumur* who worked out all the color composite video generation code, without which this project would not have been possible.
