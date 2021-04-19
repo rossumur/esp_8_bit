@@ -21,22 +21,8 @@
 #include "src/emu.h"
 #include "src/video_out.h"
 
-// esp_8_bit
-// Atari 8 computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
-// Supports NTSC/PAL composite video, Bluetooth Classic keyboards and joysticks
-
 //  Choose one of the video standards: PAL,NTSC
 #define VIDEO_STANDARD NTSC
-
-//  Choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI
-#define EMULATOR EMU_SMS
-
-// The filesystem should contain folders named for each of the emulators i.e.
-//    atari800
-//    nofrendo
-//    smsplus
-// Folders will be auto-populated on first launch with a built in selection of sample media.
-// Use 'ESP32 Sketch Data Upload' from the 'Tools' menu to copy a prepared data folder to ESP32
 
 uint32_t _frame_time = 0;
 uint32_t _drawn = 1;
@@ -44,10 +30,9 @@ bool _inited = false;
 
 uint8_t** _bufLines;
 
-// dual core mode runs emulator on comms core
-void emu_task(void* arg)
+void frame_generation(void* arg)
 {
-    printf("Not Emulator running on core %d at %dmhz\n",
+    printf("Frame generation running on core %d at %dmhz\n",
       xPortGetCoreID(),rtc_clk_cpu_freq_value(rtc_clk_cpu_freq_get()));
     _drawn = _frame_counter;
     while(true)
@@ -67,7 +52,7 @@ void setup()
 { 
   rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  
 
-  xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
+  xTaskCreatePinnedToCore(frame_generation, "frame_generation", 3*1024, NULL, 0, NULL, 0);
 
   uint8_t* bufFlat = new uint8_t[256*240];
   _bufLines = new uint8_t*[240];
