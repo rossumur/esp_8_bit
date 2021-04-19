@@ -20,6 +20,7 @@
 #define PERF  // some stats about where we spend our time
 #include "src/emu.h"
 #include "src/video_out.h"
+#include "src/jubs332.h"
 
 //  Choose one of the video standards: PAL,NTSC
 #define VIDEO_STANDARD NTSC
@@ -54,19 +55,12 @@ void setup()
 
   xTaskCreatePinnedToCore(frame_generation, "frame_generation", 3*1024, NULL, 0, NULL, 0);
 
-  uint8_t* bufFlat = new uint8_t[256*240];
   _bufLines = new uint8_t*[240];
-  uint8_t* linePointer = bufFlat;
-  uint8_t yMask;
+  uint8_t* linePointer = jubsRGB332;
   for (int y = 0; y < 240; y++)
   {
     _bufLines[y] = linePointer;
     linePointer += 256;
-    yMask = ((y/15)&0x0F);
-    for (int x = 0; x < 256; x++)
-    {
-      _bufLines[y][x] = (((x>>4)<<4) | yMask);
-    }
   }
 }
 
