@@ -15,12 +15,8 @@
 ** SOFTWARE.
 */
 
-#define VIDEO_PIN   26
-#define AUDIO_PIN   18  // can be any pin
-
 int _pal_ = 0;
 
-#ifdef ESP_PLATFORM
 #include "esp_types.h"
 #include "esp_heap_caps.h"
 #include "esp_attr.h"
@@ -31,7 +27,6 @@ int _pal_ = 0;
 #include "soc/soc.h"
 #include "soc/i2s_struct.h"
 #include "soc/i2s_reg.h"
-#include "soc/ledc_struct.h"
 #include "soc/rtc_io_reg.h"
 #include "soc/io_mux_reg.h"
 #include "rom/gpio.h"
@@ -147,69 +142,9 @@ void video_init_hw(int line_width, int samples_per_cc)
 
     // Now ideally we would like to use the decoupled left DAC channel to produce audio
     // But when using the APLL there appears to be some clock domain conflict that causes
-    // nasty digitial spikes and dropouts. You are also limited to a single audio channel.
-    // So it is back to PWM/PDM and a 1 bit DAC for us. Good news is that we can do stereo
-    // if we want to and have lots of different ways of doing nice noise shaping etc.
-
-    // PWM audio out of pin 18 -> can be anything
-    // lots of other ways, PDM by hand over I2S1, spi circular buffer etc
-    // but if you would like stereo the led pwm seems like a fine choice
-    // needs a simple rc filter (1k->1.2k resistor & 10nf->15nf cap work fine)
-
-    // 18 ----/\/\/\/----|------- a out
-    //          1k       |
-    //                  ---
-    //                  --- 10nf
-    //                   |
-    //                   v gnd
-
-    ledcSetup(0,2000000,7);    // 625000 khz is as fast as we go w 7 bits
-    ledcAttachPin(AUDIO_PIN, 0);
-    ledcWrite(0,0);
-
+    // nasty digitial spikes and dropouts.
 }
 
-// send an audio sample every scanline (15720hz for ntsc, 15600hz for PAL)
-inline void IRAM_ATTR audio_sample(uint8_t s)
-{
-    auto& reg = LEDC.channel_group[0].channel[0];
-    reg.duty.duty = s << 4; // 25 bit (21.4)
-    reg.conf0.sig_out_en = 1; // This is the output enable control bit for channel
-    reg.conf1.duty_start = 1; // When duty_num duty_cycle and duty_scale has been configured. these register won't take effect until set duty_start. this bit is automatically cleared by hardware
-    reg.conf0.clk_en = 1;
-}
-
-//  Appendix
-
-/*
-static
-void calc_freq(double f)
-{
-    f /= 1000000;
-    printf("looking for sample rate of %fmhz\n",(float)f);
-    int xtal_freq = 40;
-    for (int o_div = 0; o_div < 3; o_div++) {
-        float f_out = 4*f*((o_div + 2)*2);          // 250 < f_out < 500
-        if (f_out < 250 || f_out > 500)
-            continue;
-        int sdm = round((f_out/xtal_freq - 4)*65536);
-        float apll_freq = 40 * (4 + (float)sdm/65536)/((o_div + 2)*2);    // 16 < apll_freq < 128 MHz
-        if (apll_freq < 16 || apll_freq > 128)
-            continue;
-        printf("f_out:%f %d:0x%06X %fmhz %f\n",f_out,o_div,sdm,apll_freq/4,f/(apll_freq/4));
-    }
-    printf("\n");
-}
-
-static void freqs()
-{
-    calc_freq(PAL_FREQUENCY*3);
-    calc_freq(PAL_FREQUENCY*4);
-    calc_freq(NTSC_FREQUENCY*3);
-    calc_freq(NTSC_FREQUENCY*4);
-    calc_freq(20000000);
-}
-*/
 
 extern "C"
 void* MALLOC32(int x, const char* label)
@@ -225,34 +160,6 @@ void* MALLOC32(int x, const char* label)
         printf("MALLOC32 allocation of %s:%d %08X\n",label,x,r);
     return r;
 }
-
-#else
-
-//====================================================================================================
-//====================================================================================================
-//  Simulator
-//
-
-#define IRAM_ATTR
-#define DRAM_ATTR
-
-void video_init_hw(int line_width, int samples_per_cc);
-
-uint32_t xthal_get_ccount() {
-    unsigned int lo,hi;
-    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-    return lo;
-    //return ((uint64_t)hi << 32) | lo;
-}
-
-void audio_sample(uint8_t s);
-
-int get_hid_ir(uint8_t* buf)
-{
-    return 0;
-}
-
-#endif
 
 //====================================================================================================
 //====================================================================================================
@@ -671,66 +578,8 @@ void IRAM_ATTR pal_sync(uint16_t* line, int i)
     pal_sync2(line+_line_width/2,_line_width/2, t & 1);
 }
 
-//  audio is buffered as 6 bit unsigned samples
-uint8_t _audio_buffer[1024];
-uint32_t _audio_r = 0;
-uint32_t _audio_w = 0;
-void audio_write_16(const int16_t* s, int len, int channels)
-{
-    int b;
-    while (len--) {
-        if (_audio_w == (_audio_r + sizeof(_audio_buffer)))
-            break;
-        if (channels == 2) {
-            b = (s[0] + s[1]) >> 9;
-            s += 2;
-        } else
-            b = *s++ >> 8;
-        if (b < -32) b = -32;
-        if (b > 31) b = 31;
-        _audio_buffer[_audio_w++ & (sizeof(_audio_buffer)-1)] = b + 32;
-    }
-}
-
-// test pattern, must be ram
-uint8_t _sin64[64] = {
-    0x20,0x22,0x25,0x28,0x2B,0x2E,0x30,0x33,
-    0x35,0x37,0x38,0x3A,0x3B,0x3C,0x3D,0x3D,
-    0x3D,0x3D,0x3D,0x3C,0x3B,0x3A,0x38,0x37,
-    0x35,0x33,0x30,0x2E,0x2B,0x28,0x25,0x22,
-    0x20,0x1D,0x1A,0x17,0x14,0x11,0x0F,0x0C,
-    0x0A,0x08,0x07,0x05,0x04,0x03,0x02,0x02,
-    0x02,0x02,0x02,0x03,0x04,0x05,0x07,0x08,
-    0x0A,0x0C,0x0F,0x11,0x14,0x17,0x1A,0x1D,
-};
-uint8_t _x;
-
-// test the fancy DAC
-void IRAM_ATTR test_wave(volatile void* vbuf, int t = 1)
-{
-    uint16_t* buf = (uint16_t*)vbuf;
-    int n = _line_width;
-    switch (t) {
-        case 0: // f/64 sinewave
-            for (int i = 0; i < n; i += 2) {
-                buf[0^1] = GRAY_LEVEL + (_sin64[_x++ & 0x3F] << 8);
-                buf[1^1] = GRAY_LEVEL + (_sin64[_x++ & 0x3F] << 8);
-                buf += 2;
-            }
-            break;
-        case 1: // fast square wave
-            for (int i = 0; i < n; i += 2) {
-                buf[0^1] = GRAY_LEVEL - (0x10 << 8);
-                buf[1^1] = GRAY_LEVEL + (0x10 << 8);
-                buf += 2;
-            }
-            break;
-    }
-}
-
 // Wait for blanking before starting drawing
 // avoids tearing in our unsynchonized world
-#ifdef ESP_PLATFORM
 void video_sync()
 {
   if (!_lines)
@@ -745,7 +594,6 @@ void video_sync()
   }
   vTaskDelay(n+1);
 }
-#endif
 
 // Workhorse ISR handles audio and video updates
 extern "C"
@@ -755,10 +603,6 @@ void IRAM_ATTR video_isr(volatile void* vbuf)
         return;
 
     ISR_BEGIN();
-
-    uint8_t s = _audio_r < _audio_w ? _audio_buffer[_audio_r++ & (sizeof(_audio_buffer)-1)] : 0x20;
-    audio_sample(s);
-    //audio_sample(_sin64[_x++ & 0x3F]);
 
     int i = _line_counter++;
     uint16_t* buf = (uint16_t*)vbuf;
