@@ -30,7 +30,7 @@
 #define VIDEO_STANDARD NTSC
 
 //  Choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI
-#define EMULATOR EMU_ATARI
+#define EMULATOR EMU_SMS
 
 //  Many emus work fine on a single core (S2), file system access can cause a little flickering
 //  #define SINGLE_CORE
@@ -62,6 +62,8 @@ uint32_t _frame_time = 0;
 uint32_t _drawn = 1;
 bool _inited = false;
 
+uint8_t** _bufLines;
+
 void emu_init()
 {
     std::string folder = "/" + _emu->name;
@@ -71,6 +73,7 @@ void emu_init()
 
 void emu_loop()
 {
+  uint8_t yMask;
     // wait for blanking before drawing to avoid tearing
     video_sync();
 
@@ -79,6 +82,7 @@ void emu_loop()
     gui_update();
     _frame_time = xthal_get_ccount() - t;
     _lines = _emu->video_buffer();
+    _lines = _bufLines;
     _drawn++;
 }
 
@@ -123,6 +127,17 @@ void setup()
   #else
   xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
   #endif
+
+  uint8_t* bufFlat = new uint8_t[256];
+  for (int x = 0; x < 256; x++)
+  {
+    bufFlat[x] = ((x>>4)&0x0F);
+  }
+  _bufLines = new uint8_t*[240];
+  for (int y = 0; y < 240; y++)
+  {
+    _bufLines[y] = bufFlat;
+  }
 }
 
 #ifdef PERF
