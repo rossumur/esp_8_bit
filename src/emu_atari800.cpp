@@ -657,6 +657,13 @@ const char* _atari_help[] = {
     "  + & -      - Warm Reset",
     "  A,B,1,2    - Trigger",
     "",
+    "DualShock 3:",
+    "  D Pad      - Joystick",
+    "  Start      - Start",
+    "  Select     - Select",
+    "  Start+Sel. - Warm Reset",
+    "  X,O,[],/\\ - Trigger",
+    "",
     "5200 Keyboard Mappings:",
     "  S key      - Start",
     "  P key      - Pause",
@@ -1054,9 +1061,11 @@ public:
     // raw HID data. handle WII mappings
     virtual void hid(const uint8_t* d, int len)
     {
-        if (d[0] != 0x32 && d[0] != 0x42)
+        if (d[0] != 0x32 && d[0] != 0x42 && d[0] != DS3_FAKE_HID_REPORT_ID)
             return;
-        bool ir = *d++ == 0x42;
+        bool ir = d[0] == 0x42;
+        bool ds3 = d[0] == DS3_FAKE_HID_REPORT_ID;
+        d++;
         int reset = 0;
         for (int i = 0; i < 4; i++) {
             uint32_t p;
@@ -1064,6 +1073,8 @@ public:
                 uint16_t m =  i < 2 ? (d[0] + (d[1] << 8)) : 0;
                 p = generic_map(m,_generic_atari);
                 d += 2;
+            } else if (ds3) {
+                p = ds3_map(i,_generic_atari);
             } else
                 p = wii_map(i,_common_atari,_classic_atari);
             _joy[i] = p & 0x0F;

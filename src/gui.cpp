@@ -1071,6 +1071,18 @@ static void wii()
     _last_pad = pad;
 }
 
+static void ds3(const uint8_t* j, int len)
+{
+    int pad = ds3_hid_to_generic(j, len);
+    pad_key(GENERIC_UP,pad,82);    // up
+    pad_key(GENERIC_DOWN,pad,81);  // down
+    pad_key(GENERIC_RIGHT,pad,79); // right
+    pad_key(GENERIC_LEFT,pad,80);  // left
+    pad_key(GENERIC_MENU,pad,58);  // home/gui
+    pad_key(GENERIC_FIRE | GENERIC_FIRE_C | GENERIC_FIRE_B | GENERIC_FIRE_A,pad,40); // enter (cross, circle, square or triangle)
+    _last_pad = pad;
+}
+
 static void ir(const uint8_t* j, int len)
 {
     int pad = j[0] + (j[1] << 8);
@@ -1096,6 +1108,10 @@ void gui_hid(const uint8_t* hid, int len)  // Parse HID event
         case 0x01: keyboard(hid+1,len-1);   break;   // parse keyboard and maintain 1 key state
         case 0x32: wii();                   break;   // parse wii stuff: generic?
         case 0x42: ir(hid+2,len);           break;   // ir joy
+        case DS3_FAKE_HID_REPORT_ID: {               // dualshock 3
+            ds3(hid, len);
+            break;
+        }
     }
     _gui._emu->hid(hid+1,len-1);    // send raw events
 }

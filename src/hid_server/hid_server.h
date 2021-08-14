@@ -139,6 +139,24 @@ typedef struct {
 extern wii_state wii_states[4];
 uint32_t wii_map(int index, const uint32_t* common, const uint32_t* classic);
 
+#define DS3_REAL_HID_REPORT_ID 0x01
+#define DS3_FAKE_HID_REPORT_ID 0xA2
+
+// we don't really need these except maybe to support dualshock 4?
+enum ds3_flags {
+    dualshock3 = 0x01,
+};
+
+typedef struct {
+    uint32_t flags;
+    uint8_t report[50];
+} ds3_state;
+
+// report all of the ds3 states
+extern ds3_state ds3_states[4];
+uint32_t ds3_map(int index, const uint32_t* generic);
+uint32_t ds3_hid_to_generic(const uint8_t *j, int len);
+
 // minimal hid interface
 int hid_init(const char* local_name);
 int hid_update();

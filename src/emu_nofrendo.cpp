@@ -183,6 +183,13 @@ const char* _nes_help[] = {
     "  + & -      - Reset",
     "  A,1        - Button A",
     "  B,2        - Button B",
+    "",
+    "DualShock 3:",
+    "  Start      - Start",
+    "  Select     - Select",
+    "  Start+Sel. - Reset",
+    "  X          - Button A",
+    "  []         - Button B",
     0
 };
 
@@ -361,16 +368,19 @@ public:
     // raw HID data. handle WII/IR mappings
     virtual void hid(const uint8_t* d, int len)
     {
-        if (d[0] != 0x32 && d[0] != 0x42)
+        if (d[0] != 0x32 && d[0] != 0x42 && d[0] != DS3_FAKE_HID_REPORT_ID)
             return;
-        bool ir = *d++ == 0x42;
-
+        bool ir = d[0] == 0x42;
+        bool ds3 = d[0] == DS3_FAKE_HID_REPORT_ID;
+        d++;
         for (int i = 0; i < 2; i++) {
             uint32_t p;
             if (ir) {
                 int m = d[0] + (d[1] << 8);
                 p = generic_map(m,_generic_nes);
                 d += 2;
+            } else if (ds3) {
+                p = ds3_map(i,_generic_nes);
             } else
                 p = wii_map(i,_common_nes,_classic_nes);
 
