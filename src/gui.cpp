@@ -562,6 +562,7 @@ public:
 
     void msg(const char* m)
     {
+        _overlay->erase_msg();
         _msg = m;
         _msg_ticks = 120;
     }
