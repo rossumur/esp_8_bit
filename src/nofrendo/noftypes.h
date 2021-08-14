@@ -68,8 +68,8 @@ typedef enum
 
 #ifdef NOFRENDO_DEBUG
 
-#define  ASSERT(expr)      log_assert((int) (expr), __LINE__, __FILE__, NULL)
-#define  ASSERT_MSG(msg)   log_assert(false, __LINE__, __FILE__, (msg))
+#define  ASSERT(expr)      nofrendo_log_assert((int) (expr), __LINE__, __FILE__, NULL)
+#define  ASSERT_MSG(msg)   nofrendo_log_assert(false, __LINE__, __FILE__, (msg))
 
 #else /* !NOFRENDO_DEBUG */
 
@@ -107,7 +107,7 @@ typedef enum
 ** one million cleanups
 **
 ** Revision 1.9  2000/07/24 04:30:17  matt
-** ASSERTs should have been calling log_shutdown
+** ASSERTs should have been calling nofrendo_log_shutdown
 **
 ** Revision 1.8  2000/07/17 01:52:28  matt
 ** made sure last line of all source files is a newline

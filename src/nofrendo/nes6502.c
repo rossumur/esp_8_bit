@@ -1341,7 +1341,7 @@ uint32 nes6502_getcycles(bool reset_flag)
 #define  OPCODE_END \
    if (remaining_cycles <= 0) \
       goto end_execute; \
-   log_printf(nes6502_disasm(PC, COMBINE_FLAGS(), A, X, Y, S)); \
+   nofrendo_log_printf(nes6502_disasm(PC, COMBINE_FLAGS(), A, X, Y, S)); \
    goto *opcode_table[bank_readbyte(PC++)];
 
 #else /* !NES6520_DISASM */
@@ -1451,7 +1451,7 @@ int nes6502_execute(int timeslice_cycles)
    while (remaining_cycles > 0)
    {
 #ifdef NES6502_DISASM
-      log_printf(nes6502_disasm(PC, COMBINE_FLAGS(), A, X, Y, S));
+      nofrendo_log_printf(nes6502_disasm(PC, COMBINE_FLAGS(), A, X, Y, S));
 #endif /* NES6502_DISASM */
 
       /* Fetch and execute instruction */

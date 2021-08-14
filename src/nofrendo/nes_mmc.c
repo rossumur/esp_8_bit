@@ -101,7 +101,7 @@ void mmc_bankvrom(int size, uint32 address, int bank)
       break;
 
    default:
-      log_printf("invalid VROM bank size %d\n", size);
+      nofrendo_log_printf("invalid VROM bank size %d\n", size);
    }
 }
 
@@ -152,7 +152,7 @@ void mmc_bankrom(int size, uint32 address, int bank)
       break;
 
    default:
-      log_printf("invalid ROM bank size %d\n", size);
+      nofrendo_log_printf("invalid ROM bank size %d\n", size);
       break;
    }
 
@@ -176,7 +176,7 @@ bool mmc_peek(int map_num)
 
 static void mmc_setpages(void)
 {
-   log_printf("setting up mapper %d\n", mmc.intf->number);
+   nofrendo_log_printf("setting up mapper %d\n", mmc.intf->number);
 
    /* Switch ROM into CPU space, set VROM/VRAM (done for ALL ROMs) */
    mmc_bankrom(16, 0x8000, 0);
@@ -217,7 +217,7 @@ void mmc_reset(void)
    if (mmc.intf->init)
       mmc.intf->init();
 
-   log_printf("reset memory mapper\n");
+   nofrendo_log_printf("reset memory mapper\n");
 }
 
 
@@ -249,7 +249,7 @@ mmc_t *mmc_create(rominfo_t *rominfo)
 
    mmc_setcontext(temp);
 
-   log_printf("created memory mapper: %s\n", (*map_ptr)->name);
+   nofrendo_log_printf("created memory mapper: %s\n", (*map_ptr)->name);
 
    return temp;
 }

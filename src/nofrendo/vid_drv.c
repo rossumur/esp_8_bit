@@ -413,7 +413,7 @@ static int vid_findmode(int width, int height, viddriver_t *osd_driver)
    if (driver->free_write)
       driver->free_write(-1, NULL);
 
-   log_printf("video driver: %s at %dx%d\n", driver->name,
+   nofrendo_log_printf("video driver: %s at %dx%d\n", driver->name,
               screen->width, screen->height);
 
    return 0;
@@ -424,11 +424,11 @@ int vid_init(int width, int height, viddriver_t *osd_driver)
 {
    if (vid_findmode(width, height, osd_driver))
    {
-      log_printf("video initialization failed for %s at %dx%d\n",
+      nofrendo_log_printf("video initialization failed for %s at %dx%d\n",
                  osd_driver->name, width, height);
       return -1;
    }
-	log_printf("vid_init done\n");
+	nofrendo_log_printf("vid_init done\n");
 
    return 0;
 }

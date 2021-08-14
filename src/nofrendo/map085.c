@@ -127,7 +127,7 @@ static void map85_write(uint32 address, uint8 value)
 
    default:
 #ifdef NOFRENDO_DEBUG
-      log_printf("unhandled vrc7 write: $%02X to $%04X\n", value, address);
+      nofrendo_log_printf("unhandled vrc7 write: $%02X to $%04X\n", value, address);
 #endif /* NOFRENDO_DEBUG */
       break;
    }

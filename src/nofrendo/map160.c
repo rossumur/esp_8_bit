@@ -71,7 +71,7 @@ static void map160_write(uint32 address, uint8 value)
 #ifdef NOFRENDO_DEBUG
    else
    {
-      log_printf("mapper 160: untrapped write $%02X to $%04X\n", value, address);
+      nofrendo_log_printf("mapper 160: untrapped write $%02X to $%04X\n", value, address);
    }
 #endif /* NOFRENDO_DEBUG */
 }

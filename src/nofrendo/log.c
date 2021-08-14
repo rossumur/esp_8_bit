@@ -35,7 +35,7 @@ static int (*log_func)(const char *string) = NULL;
 
 /* first up: debug versions of calls */
 #ifdef NOFRENDO_DEBUG
-int log_init(void)
+int nofrendo_log_init(void)
 {
 //   errorlog = fopen("errorlog.txt", "wt");
 //   if (NULL == errorlog)
@@ -44,7 +44,7 @@ int log_init(void)
    return 0;
 }
 
-void log_shutdown(void)
+void nofrendo_log_shutdown(void)
 {
    /* Snoop around for unallocated blocks */
    mem_checkblocks();
@@ -55,7 +55,7 @@ void log_shutdown(void)
 //      fclose(errorlog);
 }
 
-int log_print(const char *string)
+int nofrendo_log_print(const char *string)
 {
    /* if we have a custom logging function, use that */
    if (NULL != log_func)
@@ -68,7 +68,7 @@ int log_print(const char *string)
    return 0;
 }
 
-int log_printf(const char *format, ... )
+int nofrendo_log_printf(const char *format, ... )
 {
    /* don't allocate on stack every call */
    static char buffer[1024 + 1];
@@ -90,23 +90,23 @@ int log_printf(const char *format, ... )
 
 #else /* !NOFRENDO_DEBUG */
 
-int log_init(void)
+int nofrendo_log_init(void)
 {
    return 0;
 }
 
-void log_shutdown(void)
+void nofrendo_log_shutdown(void)
 {
 }
 
-int log_print(const char *string)
+int nofrendo_log_print(const char *string)
 {
    UNUSED(string);
 
    return 0;
 }
 
-int log_printf(const char *format, ... )
+int nofrendo_log_printf(const char *format, ... )
 {
    UNUSED(format);
 
@@ -114,20 +114,20 @@ int log_printf(const char *format, ... )
 }
 #endif /* !NOFRENDO_DEBUG */
 
-void log_chain_logfunc(int (*func)(const char *string))
+void nofrendo_log_chain_logfunc(int (*func)(const char *string))
 {
    log_func = func;
 }
 
-void log_assert(int expr, int line, const char *file, char *msg)
+void nofrendo_log_assert(int expr, int line, const char *file, char *msg)
 {
    if (expr)
       return;
 
    if (NULL != msg)
-      log_printf("ASSERT: line %d of %s, %s\n", line, file, msg);
+      nofrendo_log_printf("ASSERT: line %d of %s, %s\n", line, file, msg);
    else
-      log_printf("ASSERT: line %d of %s\n", line, file);
+      nofrendo_log_printf("ASSERT: line %d of %s\n", line, file);
 
    //asm("break.n 1");
 //   exit(-1);
@@ -152,7 +152,7 @@ void log_assert(int expr, int line, const char *file, char *msg)
 ** need stdlib.h for exit()
 **
 ** Revision 1.11  2000/10/10 13:13:13  matt
-** dumb bug in log_chain_logfunc
+** dumb bug in nofrendo_log_chain_logfunc
 **
 ** Revision 1.10  2000/10/10 13:03:54  matt
 ** Mr. Clean makes a guest appearance

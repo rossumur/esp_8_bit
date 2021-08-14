@@ -201,7 +201,7 @@ static void map5_write(uint32 address, uint8 value)
 
    default:
 #ifdef NOFRENDO_DEBUG
-      log_printf("unknown mmc5 write: $%02X to $%04X\n", value, address);
+      nofrendo_log_printf("unknown mmc5 write: $%02X to $%04X\n", value, address);
 #endif /* NOFRENDO_DEBUG */
       break;
    }
@@ -218,7 +218,7 @@ static uint8 map5_read(uint32 address)
    else
    {
 #ifdef NOFRENDO_DEBUG
-      log_printf("invalid MMC5 read: $%04X", address);
+      nofrendo_log_printf("invalid MMC5 read: $%04X", address);
 #endif
       return 0xFF;
    }
