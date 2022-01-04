@@ -1,6 +1,6 @@
 # **ESP_8_BIT:** Atari 8 bit computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
-## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction
-## Supports classic NES (or SNES) one or two controllers hardwired to the ESP32. SELECT + LEFT to access file menu. SELECT + START -> reset, SD card support FAT 8.3 filenames
+## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction.<br/>
+This version also adds support for classic NES or SNES (one or two) controllers hardwired to the ESP32. Use SELECT + LEFT to access file menu and SELECT + START -> reset. There is also SD card support with FAT 8.3 filenames.
 
 ![ESP_8_BIT](img/esp8bit.jpg)
 
@@ -40,13 +40,15 @@ The build can fit inside a gameboy clam shell with real NES connectors.
     |       0 |----------+-|  (Optional)
      ---------
 
-NES        ___
+    NES controller pinout
+           ___
     DATA  |o o| NC
     LATCH |o o| NC
     CLOCK |o o/ 3V3
     GND   |o_/
 
-SNES       _
+    SNES controller pinout
+           _
     3V3   |o|
     CLOCK |o|
     LATCH |o|
@@ -58,7 +60,9 @@ SNES       _
            -  	
 	
 ```
-Before you compile the sketch you have a few choices/options (in src/config.h):
+Compiler used was Arduino V1.8.13
+ESP32 library newer than 1.0.4 might have issues when compiling the SMS emulator.
+Before you compile the sketch you have a few choices/options (in config.h):
 ```
 // Choose one of the video standards: PAL, NTSC
 #define VIDEO_STANDARD NTSC
@@ -66,8 +70,8 @@ Before you compile the sketch you have a few choices/options (in src/config.h):
 // Choose one of the following emulators: EMU_NES,EMU_SMS, EMU_ATARI
 #define EMULATOR EMU_ATARI
 
-// Enable NES or SNES controller with
-#define NES_CONTROLLER or #define SNES_CONTROLLER (but not both) as well as other IR units
+// Enable NES or SNES controller with NES_CONTROLLER or SNES_CONTROLLER (but not both) as well as other IR units
+#define NES_CONTROLLER
 
 // Define this to enable SD card with FAT 8.3 filenames
 // Note that each emulator has its own folder. Place ROMs under /nofrendo for NES, /smsplus for SMS and /atari800 for atari
