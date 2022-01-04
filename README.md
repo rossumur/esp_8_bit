@@ -1,6 +1,5 @@
 # **ESP_8_BIT:** Atari 8 bit computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
-## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction.<br/>
-This version also adds support for classic NES or SNES (one or two) controllers hardwired to the ESP32. Use SELECT + LEFT to access file menu and SELECT + START -> reset. There is also SD card support with FAT 8.3 filenames.
+## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction. This version also adds support for classic NES or SNES (one or two) controllers hardwired to the ESP32. Use SELECT + LEFT to access file menu and SELECT + START -> reset. There is also SD card support with FAT 8.3 filenames.
 
 ![ESP_8_BIT](img/esp8bit.jpg)
 
@@ -62,6 +61,10 @@ The build can fit inside a gameboy clam shell with real NES connectors.
 ```
 Compiler used was Arduino V1.8.13
 ESP32 library newer than 1.0.4 might have issues when compiling the SMS emulator.
+If you run into problems and want to clean an reset the ESP32 you can use the download tool<br/>
+Get the flash_download_tool_v3.8.5 (https://www.espressif.com/en/support/download/other-tools)<br/>
+Hit developer mode -> ESP32 downloadtool<br/>
+Make sure correct com port is selected and hit ERASE button, that will wipe everything on the ESP32<br/>
 Before you compile the sketch you have a few choices/options (in config.h):
 ```
 // Choose one of the video standards: PAL, NTSC
