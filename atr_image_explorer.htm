@@ -2717,7 +2717,7 @@ function ataribasic(a,i,len)
 		}
 	}
 
-    if (Object.keys(nmap).length != ncount)
+    if (Object.keys(nmap).length == 1)
     {
         console.log("resetting variable names");
         b.variable_names = [];  // name table was set to the same value: reset it
