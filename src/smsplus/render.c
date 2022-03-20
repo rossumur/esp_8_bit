@@ -1,3 +1,4 @@
+#pragma GCC optimize ("O2")
 
 #include "shared.h"
 
@@ -216,6 +217,21 @@ void render_init(void)
     render_reset();
 }
 
+//Avoid massive lookup table (in slow EEPROM), use CPU which is fast	//Corn
+inline uint8_t render_pixel(uint8 bx, uint8 sx)
+{
+	if (bx & 0x40)
+		return (bx & 0x7F);	//Return the input
+	if (!(bx & 0x20))	//bp
+	{
+		if (!(sx & 0x0F))	//s
+			return (bx & 0x7F);	//Return the input
+		return (sx & 0x0F) | 0x10 | 0x40;
+	}
+	if ((bx & 0x0F) || !(sx & 0x0F))	//b & s
+		return (bx & 0x7F);	//Return the input
+	return (sx & 0x0F) | 0x10 | 0x40;
+}
 
 /* Reset the rendering data */
 void render_reset(void)
@@ -258,7 +274,7 @@ void render_reset(void)
 
 /* Draw a line of the display */
 static void render_332(const uint8_t* buf, int line);
-static uint8_t linebuf_[256];
+static uint32_t linebuf_[256];	//make sure it aligns to 32bit
 
 void render_line(int line)
 {
@@ -269,7 +285,7 @@ void render_line(int line)
 
     /* Point to current line in output buffer */
     //linebuf = &bitmap.data[(line * bitmap.pitch)];
-    linebuf = linebuf_;
+    linebuf = (uint8_t*)linebuf_;
 
     /* Blank line */
     if( (!(vdp.reg[1] & 0x40)) || (((vdp.reg[2] & 1) == 0) && (IS_SMS)))
@@ -531,7 +547,7 @@ void render_obj(int line)
                         uint8 bg = linebuf_ptr[x];
     
                         /* Look up result */
-                        linebuf_ptr[x] = lut[(bg << 8) | (sp)];
+                        linebuf_ptr[x] = render_pixel(bg ,sp);	//linebuf_ptr[x] = lut[(bg << 8) | (sp)];
     
                         /* Set sprite collision flag */
                         if(bg & 0x40) vdp.status |= 0x20;
@@ -557,7 +573,7 @@ void render_obj(int line)
                         uint8 bg = linebuf_ptr[x];
     
                         /* Look up result */
-                        linebuf_ptr[x] = lut[(bg << 8) | (sp)];
+                        linebuf_ptr[x] = render_pixel(bg ,sp);	//linebuf_ptr[x] = lut[(bg << 8) | (sp)];
     
                         /* Set sprite collision flag */
                         if(bg & 0x40) vdp.status |= 0x20;
@@ -577,20 +593,19 @@ void palette_sync(int index)
     if(IS_GG)
     {
         r = ((vdp.cram[(index << 1) | 0] >> 1) & 7) << 5;   // 9 bits
-        g = ((vdp.cram[(index << 1) | 0] >> 5) & 7) << 5;
-        b = ((vdp.cram[(index << 1) | 1] >> 1) & 7) << 5;
+        g = ((vdp.cram[(index << 1) | 0] >> 5) & 7) << 2;
+        b = ((vdp.cram[(index << 1) | 1] >> 2) & 3) >> 0;
     }
     else
     {
         r = ((vdp.cram[index] >> 0) & 3) << 6;              // 6 bits
-        g = ((vdp.cram[index] >> 2) & 3) << 6;
-        b = ((vdp.cram[index] >> 4) & 3) << 6;
+        g = ((vdp.cram[index] >> 2) & 3) << 3;
+        b = ((vdp.cram[index] >> 4) & 3) << 0;
     }
-    cramd[index] = r | (g >> 3) | (b >> 6); // rrrgggbb     // 8 bit true color
+	cramd[index] = r | g | b; // rrrgggbb     // 8 bit true color
 }
 
-static
-void render_332(const uint8_t* buf, int line)
+static void render_332(const uint8_t* buf, int line)
 {
     uint8_t* dst = bitmap.data + 256*line;
 #if 0
@@ -603,10 +618,8 @@ void render_332(const uint8_t* buf, int line)
     const uint32_t* s = (const uint32_t*)buf;
     uint32_t* d = (uint32_t*)dst;
     for(int i = 0; i < n; i++) {
-        uint32_t p;
         uint32_t b = *s++;
-        p = cramd[b & 0x1F] | (cramd[(b >> 8) & 0x1F] << 8) | (cramd[(b >> 16) & 0x1F] << 16) | (cramd[(b >> 24) & 0x1F] << 24);
-        *d++ = p;
+        *d++ = cramd[b & 0x1F] | (cramd[(b >> 8) & 0x1F] << 8) | (cramd[(b >> 16) & 0x1F] << 16) | (cramd[(b >> 24) & 0x1F] << 24);
     }
 }
 

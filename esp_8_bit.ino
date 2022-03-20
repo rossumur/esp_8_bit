@@ -17,24 +17,19 @@
 #include "esp_system.h"
 #include "esp_int_wdt.h"
 #include "esp_spiffs.h"
+#include "esp_vfs_fat.h"
+#include "sdmmc_cmd.h"
+#include "soc/efuse_reg.h"
 
-#define PERF  // some stats about where we spend our time
+#include "config.h"
 #include "src/emu.h"
 #include "src/video_out.h"
 
 // esp_8_bit
 // Atari 8 computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
 // Supports NTSC/PAL composite video, Bluetooth Classic keyboards and joysticks
-
-//  Choose one of the video standards: PAL,NTSC
-#define VIDEO_STANDARD NTSC
-
-//  Choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI
-#define EMULATOR EMU_ATARI
-
-//  Many emus work fine on a single core (S2), file system access can cause a little flickering
-//  #define SINGLE_CORE
-
+// Edit src/config.h to setup emulator and video standard
+ 
 // The filesystem should contain folders named for each of the emulators i.e.
 //    atari800
 //    nofrendo
@@ -85,7 +80,7 @@ void emu_loop()
 // dual core mode runs emulator on comms core
 void emu_task(void* arg)
 {
-    printf("emu_task %s running on core %d at %dmhz\n",
+    printf("emu_task %s running on core %d at %dHz\n",
       _emu->name.c_str(),xPortGetCoreID(),rtc_clk_cpu_freq_value(rtc_clk_cpu_freq_get()));
     emu_init();
     for (;;)
@@ -94,6 +89,35 @@ void emu_task(void* arg)
 
 esp_err_t mount_filesystem()
 {
+#ifdef USE_SD_CARD
+//Use SD card for file storage, formated as FAT with 8.3 filenames
+  vTaskDelay(300 / portTICK_RATE_MS); //a small delay to let SD card power up
+
+  sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+  //host.command_timeout_ms=200;
+  //host.max_freq_khz = SDMMC_FREQ_PROBING;
+
+  sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
+  slot_config.gpio_miso =  (gpio_num_t)CONFIG_SD_MISO;
+  slot_config.gpio_mosi =  (gpio_num_t)CONFIG_SD_MOSI;
+  slot_config.gpio_sck =   (gpio_num_t)CONFIG_SD_SCK;
+  slot_config.gpio_cs =    (gpio_num_t)CONFIG_SD_CS;
+  slot_config.dma_channel = 2;
+
+  esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+    .format_if_mount_failed = false,
+    .max_files = 2
+  };
+
+  //This will mount the SD card. The file structure is compatible with normal spiffs... 
+  sdmmc_card_t *card;
+  esp_err_t e = esp_vfs_fat_sdmmc_mount("", &host, &slot_config, &mount_config, &card);
+
+  if (e) printf("Failed to mount SD card");
+  else sdmmc_card_print_info(stdout, card);  // Card has been initialized, print its properties
+
+#else
+//Use ESP spiffs
   printf("\n\n\nesp_8_bit\n\nmounting spiffs (will take ~15 seconds if formatting for the first time)....\n");
   uint32_t t = millis();
   esp_vfs_spiffs_conf_t conf = {
@@ -107,11 +131,17 @@ esp_err_t mount_filesystem()
     printf("Failed to mount or format filesystem: %d. Use 'ESP32 Sketch Data Upload' from 'Tools' menu\n",e);
   vTaskDelay(1);
   printf("... mounted in %d ms\n",millis()-t);
-  return e;
+#endif
+
+return e;
 }
 
 void setup()
 { 
+  int silicon_version = (REG_READ(EFUSE_BLK0_RDATA3_REG) >> 15) & 1;
+  if (silicon_version == 0)
+    printf("Warning this revision of the chip has an issue with the APLL and will not work properly!\n");
+      
   rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  
   mount_filesystem();                       // mount the filesystem!
   _emu = NewEmulator();                     // create the emulator!

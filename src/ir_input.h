@@ -23,11 +23,6 @@
 // poll to synthesize hid events at every frame
 // i know there is a perfectly good peripheral for this in the ESP32 but this seems more fun somehow
 
-#define WEBTV_KEYBOARD
-#define RETCON_CONTROLLER
-#define FLASHBACK_CONTROLLER
-//#define APPLE_TV_CONTROLLER
-
 uint8_t _ir_last = 0;
 uint8_t _ir_count = 0;
 uint8_t _keyDown = 0;
@@ -65,7 +60,7 @@ public:
         if ((m & (GENERIC_UP | GENERIC_DOWN)) == (GENERIC_UP | GENERIC_DOWN))
             b++; // bogus?
         if (b) {
-            printf("bogus:%04X\n",m);
+            //printf("bogus:%04X\n",m);
             return;
         }
 
@@ -94,6 +89,106 @@ public:
         return 0;
     }
 };
+
+//==================================================================
+//Classic hard wired NES controllers
+//==================================================================
+#ifdef NES_CONTROLLER
+const uint16_t map_nes[8] = 
+{
+	GENERIC_FIRE | GENERIC_FIRE_A,	//NES_A
+	GENERIC_FIRE_B,	//NES_B
+	GENERIC_SELECT,	//NES_SELECT
+	GENERIC_START,	//NES_START
+	GENERIC_UP,		//NES_UP
+	GENERIC_DOWN,	//NES_DOWN
+	GENERIC_LEFT,	//NES_LEFT
+	GENERIC_RIGHT	//NES_RIGHT
+};
+
+IRState _nes;
+int get_hid_nes(uint8_t* dst)
+{
+	digitalWrite(NES_CTRL_LATCH, 1);
+	delayMicroseconds(0);
+	digitalWrite(NES_CTRL_LATCH, 0);
+	delayMicroseconds(0);
+
+	uint16_t buttonsA = 0;
+	uint16_t buttonsB = 0;
+	for (int i = 0; i < 8; i++)
+		{
+			buttonsA |= (1^digitalRead(NES_CTRL_ADATA)) * map_nes[i];
+			buttonsB |= (1^digitalRead(NES_CTRL_BDATA)) * map_nes[i];
+			digitalWrite(NES_CTRL_CLK, 0);
+			delayMicroseconds(0);
+			digitalWrite(NES_CTRL_CLK, 1);
+			delayMicroseconds(0);
+		}
+	//printf("NESCTRL:%04X %04X\n", buttonsA, buttonsB);
+  
+	//Setup Controller A
+	if (buttonsA == (GENERIC_LEFT | GENERIC_SELECT)) buttonsA |= GENERIC_OTHER;	//Press LEFT & SELECT to open file menu
+	_nes.set(0,buttonsA,0); // no repeat period
+
+	//Setup Controller B
+	_nes.set(1,buttonsB,0); // no repeat period
+  
+  return _nes.get_hid(dst);		
+}
+#endif
+
+//==================================================================
+//Classic hard wired SNES controllers
+//==================================================================
+#ifdef SNES_CONTROLLER
+const uint16_t map_snes[12] = 
+{
+	GENERIC_FIRE_B,	//SNES_B
+	GENERIC_FIRE_C,	//SNES_Y
+	GENERIC_SELECT,	//SNES_SELECT
+	GENERIC_START,	//SNES_START
+	GENERIC_UP,		//SNES_UP
+	GENERIC_DOWN,	//SNES_DOWN
+	GENERIC_LEFT,	//SNES_LEFT
+	GENERIC_RIGHT,	//SNES_RIGHT
+	GENERIC_FIRE | GENERIC_FIRE_A,	//SNES_A
+	GENERIC_FIRE_X,	//SNES_X
+	GENERIC_FIRE_Y,	//SNES_L
+	GENERIC_FIRE_Z	//SNES_R
+};
+
+IRState _snes;
+int get_hid_snes(uint8_t* dst)
+{
+	digitalWrite(NES_CTRL_LATCH, 1);
+	delayMicroseconds(0);
+	digitalWrite(NES_CTRL_LATCH, 0);
+	delayMicroseconds(0);
+
+	uint16_t buttonsA = 0;
+	uint16_t buttonsB = 0;
+	for (int i = 0; i < 12; i++)
+		{
+			buttonsA |= (1^digitalRead(NES_CTRL_ADATA)) * map_snes[i];
+			buttonsB |= (1^digitalRead(NES_CTRL_BDATA)) * map_snes[i];
+			digitalWrite(NES_CTRL_CLK, 0);
+			delayMicroseconds(0);
+			digitalWrite(NES_CTRL_CLK, 1);
+			delayMicroseconds(0);
+		}
+	//printf("SNESCTRL:%04X %04X\n", buttonsA, buttonsB);
+  
+	//Setup Controller A
+	if (buttonsA == (GENERIC_LEFT | GENERIC_SELECT)) buttonsA |= GENERIC_OTHER;	//Press LEFT & SELECT to open file menu
+	_snes.set(0,buttonsA,0); // no repeat period
+
+	//Setup Controller B
+	_snes.set(1,buttonsB,0); // no repeat period
+  
+  return _snes.get_hid(dst);		
+}
+#endif
 
 //==========================================================
 //==========================================================
@@ -664,9 +759,17 @@ int get_hid_ir(uint8_t* dst)
     if (n = get_hid_flashback(dst))
         return n;
 #endif
-    #ifdef WEBTV_KEYBOARD
+#ifdef NES_CONTROLLER
+    if (n = get_hid_nes(dst))
+        return n;
+#endif
+#ifdef SNES_CONTROLLER
+    if (n = get_hid_snes(dst))
+        return n;
+#endif
+#ifdef WEBTV_KEYBOARD
         return get_hid_webtv(dst);
-    #endif
-    return 0;
+#endif
+	return 0;
 }
 #endif
