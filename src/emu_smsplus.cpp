@@ -303,6 +303,13 @@ const char* _sms_help[] = {
     "  + & -      - Reset",
     "  A,1        - Button 1",
     "  B,2        - Button 2",
+    "",
+    "DualShock 3:",
+    "  Start      - Start",
+    "  Select     - Pause",
+    "  Start+Sel. - Reset",
+    "  X          - Button 1",
+    "  []         - Button 2",
     0
 };
 
@@ -468,9 +475,11 @@ public:
     // raw HID data. handle WII/IR mappings
     virtual void hid(const uint8_t* d, int len)
     {
-        if (d[0] != 0x32 && d[0] != 0x42)
+        if (d[0] != 0x32 && d[0] != 0x42 && d[0] != DS3_FAKE_HID_REPORT_ID)
             return;
-        bool ir = *d++ == 0x42;
+        bool ir = d[0] == 0x42;
+        bool ds3 = d[0] == DS3_FAKE_HID_REPORT_ID;
+        d++;
         int reset = 0;
         for (int i = 0; i < 2; i++) {
             uint32_t p;
@@ -478,6 +487,8 @@ public:
                 int m = d[0] + (d[1] << 8);
                 p = generic_map(m,_generic_sms);
                 d += 2;
+            } else if (ds3) {
+                p = ds3_map(i,_generic_sms);
             } else
                 p = wii_map(i,_common_sms,_classic_sms);
             input.pad[i] = p & 0xFF;

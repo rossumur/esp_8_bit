@@ -462,11 +462,27 @@ public:
 
     bool is_wii()
     {
-        if (_name.find("Nintendo") == 0)
+        // PLAYSTATION(R)3 Controller
+        if (_name.find("PLAYSTATION") != string::npos) {
+            return false;
+        }
+        if (_name.find("Nintendo") == 0) {
             return true;
-        if (_dev_class == 0x042500 || _dev_class == 0x080500)
+        }
+        // NOTE: dualshock 3 also uses class 0x080500
+        if (_dev_class == 0x042500 || _dev_class == 0x080500) {
             return true;
+        }
         return false;
+    }
+
+    // unused
+    bool is_ds3()
+    {
+        // PLAYSTATION(R)3 Controller
+        return _name.find("PLAYSTATION") != string::npos
+            && _name.find("Controller") != string::npos
+            && _dev_class == 0x080500;
     }
 
     int l2_open(int scid, int psm, bool listen)
@@ -604,6 +620,9 @@ public:
 
             case L2CAP_CONF_RSP:
                 s = get_socket(c->params[0]);
+                if (s) {
+                    s->set_state(L2CAP_GOTCONFRSP);
+                }
                 check_open(s);
                 break;
 
@@ -638,7 +657,16 @@ public:
                 for (auto& p : _sockets) {
                     auto* s = p.second;
                     if (s->_psm == psm) {
+                        // ds3 expects a pending response and then a success response
+                        // hopefully this doesn't break compatibility with other devices
+
                         u16 p[4];
+                        p[0] = s->_scid;       // this end
+                        p[1] = dcid;           // other end
+                        p[2] = 1;              // pending
+                        p[3] = 0;              // no further information
+                        l2cap(L2CAP_CONN_RSP,rxid,p,4);
+
                         p[0] = s->_scid;       // this end
                         p[1] = dcid;           // other end
                         p[2] = 0;              // ok

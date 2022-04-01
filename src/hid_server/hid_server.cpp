@@ -24,14 +24,27 @@
 #include <string>
 using namespace std;
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #include "hci_server.h"
 #include "hid_server.h"
+#include "../emu.h" // for gui_msg
 
 enum {
     HID_SDP_PSM = 0x0001,
     HID_CONTROL_PSM = 0x0011,
     HID_INTERRUPT_PSM = 0x0013,
 };
+
+enum {
+    DS3_STATE_NONE,
+    DS3_STATE_INIT_PENDING,
+    DS3_STATE_READY
+};
+
+static uint8_t _ds3_hidbuf[50] = {0}; // shared buffer
+ds3_state ds3_states[4] = {0};
 
 class SDPParse;
 class InputDevice {
@@ -65,6 +78,10 @@ public:
 
     int _wii_index;
 
+    bool _is_ds3;
+    int _ds3_state;
+    int _ds3_index;
+
     const char* name();
     void connect();
     void authentication_complete(int status);
@@ -76,6 +93,15 @@ public:
 
     void start_sdp();
     void update_sdp();
+
+    void ds3_enable();
+    void ds3_set_player(int player);
+
+    int ds3_find_slot();
+    void ds3_hid(const uint8_t* data, int len);
+
+private:
+    void _ds3_led(int pos, int on);
 };
 
 //==================================================================
@@ -587,8 +613,12 @@ public:
 // "Nintendo RVL-CNT-01-TR"
     bool is_wii(InputDevice* d)
     {
+        // PLAYSTATION(R)3 Controller
+        if (strncmp(d->_name.c_str(),"PLAYSTATION",11) == 0)
+            return false;
         if (strncmp(d->_name.c_str(),"Nintendo",8) == 0)
             return true;
+        // NOTE: dualshock 3 also uses WII_TR_DEVICE_CLASS
         return (d->_dev_class == WII_DEVICE_CLASS) || (d->_dev_class == WII_TR_DEVICE_CLASS);
     }
 
@@ -686,7 +716,7 @@ public:
     }
 };
 
-InputDevice::InputDevice() : _sdp_handler(0),_reconnect(0),_wii_index(-1) {
+InputDevice::InputDevice() : _sdp_handler(0),_reconnect(0),_wii_index(-1),_ds3_state(DS3_STATE_NONE),_ds3_index(-1) {
     _name[0] = 0;
 }
 
@@ -757,6 +787,14 @@ void InputDevice::remote_name_response(const char* n)
     _name = n;
     gui_msg(name());
 
+    // PLAYSTATION(R)3 Controller
+    if (_name.find("PLAYSTATION") != string::npos &&
+        _name.find("Controller") != string::npos &&
+        _dev_class == 0x080500) {
+        printf("[ds3] set _is_ds3 on InputDevice\n");
+        _is_ds3 = true;
+    }
+
     uint8_t key[16];
     if (_reconnect || (read_link_key(&_bdaddr,key) == 0))       // do we know this device?
     {
@@ -796,6 +834,9 @@ void InputDevice::disconnection_complete()
     if (_wii_index != -1)
         wii_states[_wii_index].flags = 0;
     _wii_index = -1;
+    if (_ds3_index != -1)
+        ds3_states[_ds3_index].flags = 0;
+    _ds3_index = -1;
 }
 
 const char* _nams[] = {
@@ -805,6 +846,7 @@ const char* _nams[] = {
     "L2CAP_OPEN",
     "L2CAP_CLOSED",
     "L2CAP_DELETED",
+    "L2CAP_GOTCONFRSP",
 };
 
 void InputDevice::socket_changed(int socket, int state)
@@ -816,6 +858,10 @@ void InputDevice::socket_changed(int socket, int state)
         //uint8_t protocol = 0x70;    // ask for boot protocol
         //l2_send(_control,&protocol,1);
     }
+    else if ((socket == _interrupt) && (state == L2CAP_GOTCONFRSP)) {
+        printf("[ds3] interrupt socket state L2CAP_GOTCONFRSP\n");
+        _ds3_state = DS3_STATE_INIT_PENDING;
+    }
 }
 
 const char* InputDevice::name()
@@ -823,14 +869,123 @@ const char* InputDevice::name()
     return _name.empty() ? batostr(_bdaddr) : _name.c_str();
 }
 
+void InputDevice::ds3_enable()
+{
+    uint8_t buf[6];
+    buf[0] = 0x53; // HID BT Set_report (0x50) | Report Type (Feature 0x03)
+    buf[1] = 0xF4; // Report ID
+    buf[2] = 0x42; // Special PS3 Controller enable commands
+    buf[3] = 0x03;
+    buf[4] = 0x00;
+    buf[5] = 0x00;
+    l2_send(_control, buf, sizeof(buf));
+}
+
+void InputDevice::ds3_set_player(int player)
+{
+    if (_control && _interrupt) {
+        printf("[ds3] ds3_set_player(%d) ok\n", player);
+    } else {
+        printf("[ds3] ds3_set_player(%d) not ready\n", player);
+        return;
+    }
+
+    if (player < 0 || player > 10) {
+        player = 0;
+    }
+
+    for (int i = 4; i > 0; i--) {
+        _ds3_led(i, player >= i);
+        if (player >= i) {
+            player -= i;
+        }
+    }
+
+    l2_send(_control, _ds3_hidbuf, sizeof(_ds3_hidbuf));
+}
+
+void InputDevice::_ds3_led(int pos, int on)
+{
+    if (pos < 1 || pos > 4) {
+        return;
+    }
+
+    int offset;
+    if (pos == 1) {
+        offset = 27;
+    }
+    else if (pos == 2) {
+        offset = 22;
+    }
+    else if (pos == 3) {
+        offset = 17;
+    }
+    else if (pos == 4) {
+        offset = 12;
+    }
+
+    _ds3_hidbuf[0] = 0x52; // HID BT Set_report (0x50) | Report Type (Output 0x02)
+    _ds3_hidbuf[1] = 0x01; // Report ID
+
+    if (on) {
+        _ds3_hidbuf[11] |= (1 << pos);
+        _ds3_hidbuf[offset+0] = 0xff;
+        _ds3_hidbuf[offset+1] = 0x27;
+        _ds3_hidbuf[offset+2] = 0x10;
+        _ds3_hidbuf[offset+3] = 0x00;
+        _ds3_hidbuf[offset+4] = 0x32;
+    }
+    else {
+        _ds3_hidbuf[11] &= ~(1 << pos);
+        _ds3_hidbuf[offset+0] = 0x00;
+        _ds3_hidbuf[offset+1] = 0x00;
+        _ds3_hidbuf[offset+2] = 0x00;
+        _ds3_hidbuf[offset+3] = 0x00;
+        _ds3_hidbuf[offset+4] = 0x00;
+    }
+}
+
+// assign this device to a ds3 slot
+int InputDevice::ds3_find_slot()
+{
+    if (_ds3_index == -1)
+    {
+        for (int i = 0; i < 4; i++) {
+            if (ds3_states[i].flags == 0) {
+                ds3_states[i].flags = dualshock3;
+                _ds3_index = i;
+                break;
+            }
+        }
+    }
+    return _ds3_index;
+}
+
+void InputDevice::ds3_hid(const uint8_t* data, int len)
+{
+    if (!_is_ds3)
+        return;
+    int slot = ds3_find_slot();
+    if (slot == -1)
+        return;     // does not have a slot yet? odd
+    ds3_state* state = ds3_states + slot;
+
+    switch (data[1]) {
+        case DS3_REAL_HID_REPORT_ID:
+            memcpy(state->report,data,min((int)sizeof(state->report),len));
+            break;
+        default:
+            printf("unhandled hid %02X\n",data[1]);
+    }
+}
+
 class HIDSource {
     string _local_name;
-    vector<InputDevice*> _devices;
     WII _wii;
 
     InputDevice* get_device(const bdaddr_t* bdaddr)
     {
-        for (auto d : _devices)
+        for (auto d : devices)
             if (memcmp(&d->_bdaddr,bdaddr,6) == 0)
                 return d;
         return NULL;
@@ -877,7 +1032,7 @@ class HIDSource {
             d->_dev_class = (dev_class[0] << 16) | (dev_class[1] << 8) | dev_class[2];
             d->_control = d->_interrupt = d->_sdp = 0;
             d->_state = InputDevice::CLOSED;
-            _devices.push_back(d);
+            devices.push_back(d);
             printf("%s:%06X input device added\n",batostr(d->_bdaddr),d->_dev_class);
         }
         return d;
@@ -906,7 +1061,7 @@ class HIDSource {
                 break;
 
             case CALLBACK_INQUIRY_DONE:
-                for (auto* id : _devices)
+                for (auto* id : devices)
                     id->connect();
                 break;
 
@@ -953,6 +1108,8 @@ class HIDSource {
     }
 
     public:
+    vector<InputDevice*> devices;
+
     HIDSource(const char* localname) : _local_name(localname)
     {
         hci_init(hci_cb,this);
@@ -967,11 +1124,16 @@ class HIDSource {
     // called from emu thread
     int get(uint8_t* dst, int dst_len)
     {
-        for (auto d : _devices) {
+        for (auto d : devices) {
             if (d->_interrupt) {
                 int len = l2_recv(d->_interrupt,dst,dst_len);
                 if (len > 0) {
                     _wii.hid(d,dst,len);
+                    d->ds3_hid(dst,len);
+                    // this is bad
+                    if (d->_is_ds3 && dst[1] == DS3_REAL_HID_REPORT_ID) {
+                        dst[1] = DS3_FAKE_HID_REPORT_ID;
+                    }
                     return len;
                 }
                 if (len < 0) {
@@ -1004,6 +1166,41 @@ int hid_close()
 
 int hid_update()
 {
+    if (!_hid_source)
+        return -1;
+
+    for (auto d : _hid_source->devices) {
+        if (d->_is_ds3 && d->_ds3_state == DS3_STATE_INIT_PENDING) {
+            printf("[ds3] %s is a DualShock 3\n", batostr(d->_bdaddr));
+            printf("[ds3] _ds3_state:%x\n", d->_ds3_state);
+            printf("[ds3] _control:%x\n", d->_control);
+            printf("[ds3] _interrupt:%x\n", d->_interrupt);
+
+            d->_ds3_state = DS3_STATE_READY;
+
+            // TODO: it's probably bad to delay the arduino loop task
+            // especially if the emulator loop is also running there
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            d->ds3_enable();
+            hci_update(); // force send enable command immediately before next delay
+
+            int slot = d->ds3_find_slot();
+            // slot 0 = player 1
+            // slot 1 = player 2
+            // slot 2 = player 3
+            // slot 3 = player 4
+            // no slot = player 10 (all leds on)
+            int player = slot == -1 ? 10 : slot+1;
+
+            // at least 150ms between commands?
+            vTaskDelay(150 / portTICK_PERIOD_MS);
+            d->ds3_set_player(player);
+            hci_update();
+
+            printf("[ds3] %s is player %d slot:%d\n", batostr(d->_bdaddr), player, slot);
+            gui_msg("DualShock 3 ready");
+        }
+    }
     return hci_update();
 }
 
@@ -1035,4 +1232,68 @@ uint32_t wii_map(int index, const uint32_t* common, const uint32_t* classic)
         }
     }
     return r;
+}
+
+// map ds3 controller keys
+uint32_t ds3_map(int index, const uint32_t* generic)
+{
+    uint32_t f = ds3_states[index].flags;
+    if (!(f & dualshock3))
+        return 0;
+
+    int m = ds3_hid_to_generic(ds3_states[index].report, sizeof(ds3_states[index].report));
+    return generic_map(m,generic);
+}
+
+uint32_t ds3_hid_to_generic(const uint8_t *j, int len)
+{
+    /*
+    HID Report Mapping
+    from http://eleccelerator.com/wiki/index.php?title=DualShock_3
+    Byte 0 is the report ID
+    Byte 1 is reserved
+    Byte 2, 3, 4, and 5 contain button info. Active high (1 means pressed, 0 means released).
+    Byte 6 is left stick X axis
+    Byte 7 is left stick Y axis
+    Byte 8 is right stick X axis
+    Byte 9 is right stick Y axis; top left is 0
+    Byte 13 to byte 24 contains analog button data, 8 bits each, 0 is released and FF is fully pressed.
+    Byte 40 and 41: accelerometer X axis, little endian 10 bit unsigned
+    Byte 42 and 43: accelerometer Y axis, little endian 10 bit unsigned
+    Byte 44 and 45: accelerometer Z axis, little endian 10 bit unsigned
+    Byte 46 and 47: gyroscope, little endian 10 bit unsigned
+    */
+    int pad = 0;
+    // j[0] == 0xa1
+    // j[1] is byte 0 == 0x01 or DS3_FAKE_HID_REPORT_ID
+    // j[2] is byte 1 == 0x00?
+    // byte 2
+    if (j[3] & (1 << 7)) pad |= GENERIC_LEFT;   // dpad left
+    if (j[3] & (1 << 6)) pad |= GENERIC_DOWN;   // dpad down
+    if (j[3] & (1 << 5)) pad |= GENERIC_RIGHT;  // dpad right
+    if (j[3] & (1 << 4)) pad |= GENERIC_UP;     // dpad up
+    if (j[3] & (1 << 3)) pad |= GENERIC_START;  // start
+    if (j[3] & (1 << 2)) pad |= 0;              // R3 (unused)
+    if (j[3] & (1 << 1)) pad |= 0;              // L3 (unused)
+    if (j[3] & (1 << 0)) pad |= GENERIC_SELECT; // select
+    // byte 3
+    if (j[4] & (1 << 7)) pad |= GENERIC_FIRE_B; // square
+    if (j[4] & (1 << 6)) pad |= GENERIC_FIRE_A; // cross
+    if (j[4] & (1 << 5)) pad |= GENERIC_FIRE_C; // circle
+    if (j[4] & (1 << 4)) pad |= GENERIC_FIRE;   // triangle
+    if (j[4] & (1 << 3)) pad |= 0;              // R1 (unused)
+    if (j[4] & (1 << 2)) pad |= 0;              // L1 (unused)
+    if (j[4] & (1 << 1)) pad |= 0;              // R2 (unused)
+    if (j[4] & (1 << 0)) pad |= 0;              // L2 (unused)
+    // byte 4
+    if (j[5] & (1 << 7)) pad |= 0;              // unassigned
+    if (j[5] & (1 << 6)) pad |= 0;              // unassigned
+    if (j[5] & (1 << 5)) pad |= 0;              // unassigned
+    if (j[5] & (1 << 4)) pad |= 0;              // unassigned
+    if (j[5] & (1 << 3)) pad |= 0;              // unassigned
+    if (j[5] & (1 << 2)) pad |= 0;              // unassigned
+    if (j[5] & (1 << 1)) pad |= 0;              // unassigned
+    if (j[5] & (1 << 0)) pad |= GENERIC_MENU;   // PS
+    // no buttons assigned to byte 5
+    return pad;
 }

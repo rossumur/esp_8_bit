@@ -93,7 +93,8 @@ enum {
     L2CAP_OPENING = 2,
     L2CAP_OPEN = 3,
     L2CAP_CLOSED = 4,
-    L2CAP_DELETED = 5
+    L2CAP_DELETED = 5,
+    L2CAP_GOTCONFRSP = 6 // for ds3
 };
 
 enum HCI_CALLBACK_EVENT

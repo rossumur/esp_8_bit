@@ -28,12 +28,12 @@
 
 #include "stdio.h"
 
-extern int log_init(void);
-extern void log_shutdown(void);
-extern int log_print(const char *string);
-extern int log_printf(const char *format, ...);
-extern void log_chain_logfunc(int (*logfunc)(const char *string));
-extern void log_assert(int expr, int line, const char *file, char *msg);
+extern int nofrendo_log_init(void);
+extern void nofrendo_log_shutdown(void);
+extern int nofrendo_log_print(const char *string);
+extern int nofrendo_log_printf(const char *format, ...);
+extern void nofrendo_log_chain_logfunc(int (*logfunc)(const char *string));
+extern void nofrendo_log_assert(int expr, int line, const char *file, char *msg);
 
 #endif /* _LOG_H_ */
 

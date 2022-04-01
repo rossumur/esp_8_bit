@@ -80,7 +80,7 @@ static void shutdown_everything(void)
    osd_shutdown();
    //gui_shutdown();
    vid_shutdown();
-   log_shutdown();
+   nofrendo_log_shutdown();
 }
 
 /* End the current context */
@@ -163,7 +163,7 @@ static int internal_insert(const char *filename, system_t type)
       console.machine.nes = nes_create();
       if (NULL == console.machine.nes)
       {
-         log_printf("Failed to create NES instance.\n");
+         nofrendo_log_printf("Failed to create NES instance.\n");
          return -1;
       }
 
@@ -181,7 +181,7 @@ static int internal_insert(const char *filename, system_t type)
    
    case system_unknown:
    default:
-      log_printf("system type unknown, playing nofrendo NES intro.\n");
+      nofrendo_log_printf("system type unknown, playing nofrendo NES intro.\n");
       if (NULL != console.filename)
          free(console.filename);
 
@@ -211,7 +211,7 @@ int nofrendo_main(int argc, char *argv[])
    console.refresh_rate = 0;
    console.quit = false;
    
-   if (log_init())
+   if (nofrendo_log_init())
       return -1;
 
    event_init();

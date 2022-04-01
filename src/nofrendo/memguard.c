@@ -390,14 +390,14 @@ void mem_checkleaks(void)
 
    if (mem_blockcount)
    {
-      log_printf("memory leak - %d unfreed block%s\n\n", mem_blockcount, 
+      nofrendo_log_printf("memory leak - %d unfreed block%s\n\n", mem_blockcount, 
          mem_blockcount == 1 ? "" : "s");
 
       for (i = 0; i < MAX_BLOCKS; i++)
       {
          if (mem_record[i].block_addr)
          {
-            log_printf("addr: 0x%08X, size: %d, line %d of %s%s\n",
+            nofrendo_log_printf("addr: 0x%08X, size: %d, line %d of %s%s\n",
                     (uint32) mem_record[i].block_addr,
                     mem_record[i].block_size,
                     mem_record[i].line_num,
@@ -408,7 +408,7 @@ void mem_checkleaks(void)
       }
    }
    else
-      log_printf("no memory leaks\n");
+      nofrendo_log_printf("no memory leaks\n");
 #endif /* NOFRENDO_DEBUG */
 }
 
@@ -426,7 +426,7 @@ void mem_checkblocks(void)
       {
          if (mem_checkguardblock(mem_record[i].block_addr, GUARD_LENGTH))
          {
-            log_printf("addr: 0x%08X, size: %d, line %d of %s -- block corrupt\n",
+            nofrendo_log_printf("addr: 0x%08X, size: %d, line %d of %s -- block corrupt\n",
                     (uint32) mem_record[i].block_addr,
                     mem_record[i].block_size,
                     mem_record[i].line_num,

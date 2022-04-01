@@ -14,9 +14,11 @@
 ** SOFTWARE.
 */
 
+#include <Arduino.h>
 #include "esp_system.h"
 #include "esp_int_wdt.h"
 #include "esp_spiffs.h"
+#include "esp_bt_defs.h"
 
 #define PERF  // some stats about where we spend our time
 #include "src/emu.h"
@@ -34,6 +36,11 @@
 
 //  Many emus work fine on a single core (S2), file system access can cause a little flickering
 //  #define SINGLE_CORE
+
+// Enter the MAC address your DualShock 3 controllers are currently paired to
+// or comment the following line and pair your controllers to the Bluetooth MAC address of your ESP32
+// on Windows you can use ScpToolkit's Bluetooth Pair Utility or SixaxisPairTool
+#define DS3_PAIRED_BT_ADDRESS "01:02:03:04:05:06"
 
 // The filesystem should contain folders named for each of the emulators i.e.
 //    atari800
@@ -112,6 +119,31 @@ esp_err_t mount_filesystem()
 
 void setup()
 { 
+  #ifdef DS3_PAIRED_BT_ADDRESS
+    esp_bd_addr_t addr;
+    int addr_len = sscanf(
+      DS3_PAIRED_BT_ADDRESS,
+       "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+       &addr[0],
+       &addr[1],
+       &addr[2],
+       &addr[3],
+       &addr[4],
+       &addr[5]
+    );
+    if (addr_len == ESP_BD_ADDR_LEN) {
+      // The bluetooth MAC address is derived from the base MAC address
+      // https://docs.espressif.com/projects/esp-idf/en/stable/api-reference/system/system.html#mac-address
+      uint8_t base_mac[6];
+      memcpy(base_mac, &addr, 6);
+      base_mac[5] -= 2;
+      esp_base_mac_addr_set(base_mac);
+    }
+    else {
+      printf("[ds3] defined MAC address is invalid\n");
+    }
+  #endif
+
   rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  
   mount_filesystem();                       // mount the filesystem!
   _emu = NewEmulator();                     // create the emulator!

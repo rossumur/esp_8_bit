@@ -218,7 +218,7 @@ nes_t* _nes_p = 0;
 int nes_emulate_init(const char* path, int width, int height)
 {
     if (!_nes_p) {
-        if (log_init())
+        if (nofrendo_log_init())
            return -1;
         if (vid_init(width,height,&sdlDriver))
             return -1;
