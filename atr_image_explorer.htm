@@ -4527,7 +4527,12 @@ class XFD {
     static
     is_xfd(d)
     {
-        return (le16(d,0) == 0x0300) && (le16(d,2) == 0x0700);
+        //(pvbestinfoo mod) no rule for data in XFD image, since it's just an Atari raw image disk. Hence to be an XFD, image size shoud only be equal a disk size.
+        //note : 256*720 stands for buggy image that considers the 3 first sectors may be 256 bytes on double density disk
+	//https://forums.atariage.com/topic/123109-atr-format-reference/
+        //https://forums.atariage.com/topic/293817-first-3-disk-sectors-always-128-bytes/
+        if ((d.length == 128 * 720) || (d.length == 128 * 3 + 256 * 717) || (d.length == 128 * 1040) || (d.length == 256 * 720))
+            return true;
     }
 
     static
@@ -4572,7 +4577,7 @@ class ATX {
         var atr = new Uint8Array(16+atx.size);
         var sector_count = 720;
 
-        atr[0] = 0x96;
+        atr[0] = 0x96; // (pvbestinfoo) $0296 = checksum of 'NICKATARI' string
         atr[1] = 0x02;
         atr[2] = (atx.size >> 4) & 0xFF;
         atr[3] = (atx.size >> 4) >> 8;
@@ -5250,7 +5255,7 @@ function show_arc(f)
 
 //===================================================================================================
 //===================================================================================================
-// dump atr raw data
+// dump atr raw data (ATR, ATX, PRO and XFD that are tagged .is_disk)
 
 function show_atr(f,rawmode)
 {
@@ -5268,7 +5273,9 @@ function show_atr(f,rawmode)
             if (offset >= (atr.size+16))
                 break;
             var zero = is_zero(d,offset,size);
-            txt.push("; Sector " + n + (zero ? " (" + size + " zeros)":""));
+			var sect = n + 1; //(pvbestinfoo) Sector should be counted from 1 to 720 (or 1 to 1040)
+	        //(pvbestinfoo) adding the display of sector hexa value and decimal value into parenthesis :
+            txt.push("; Sector " + hex(sect, 3) + " (" + sect + ")" + (zero ? " (" + size + " zeros)" : ""));
 
             if (!zero)
                 txt.push(hex_dump(d,offset,size,4));
@@ -5284,13 +5291,15 @@ function show_atr(f,rawmode)
     {
         return n > 0xFF ? hex(n,4) : '  ' + hex(n);
     }
-
+    // (pvbestinfoo) source https://www.atariarchives.org/mapping/appendix17.php : DOS 2.5 loads its boot sector at address $700
     var _br = {
         BFLG:   d[16],          // Boot flag; always equals 0.
         BRCNT:  d[17],          // Number of sectors in the disk boot;
         BLDADDR:le16(d,18),     // Boot load address; where DOS is loaded into memory;  $700
         BINTAD: le16(d,20),     // DOS initialization address;  $1540. 
         BCONT:  le16(d,23),     // skip 4C jmp
+	// (pvbestinfoo) end of normal boot sector
+	// (pvbestinfoo) DOS disk additional boot info :
         SABYTE: d[25],          // Maximum number of concurrently open files--usually three.
         DRVBYT: d[26],          // Drive allocation byte; one bit per drive.
         SAFBFW: d[27],
@@ -5331,7 +5340,7 @@ function show_atr(f,rawmode)
             unused += le16(d,vtoc2+122);
     }
 
-    txt.push(`; Image has ${sc} ${atr.sector_size} byte sectors - ` + density);
+    txt.push(`; <b>Image has ${sc} ($${sc.toString(16).toUpperCase()}) sectors of ${atr.sector_size} bytes - ` + density + "</b>"); //(pvbestinfoo) wording modification
     if (sparta) {
         // something
     } else {
@@ -5345,11 +5354,23 @@ function show_atr(f,rawmode)
 
     // Show boot sectors, disassemble them
 
-    txt.push("; boot record");
+    txt.push(";<b> Boot sector record:</b>"); //(pvbestinfoo) wording modification
     var k = Object.keys(_br);
-    for (var i = 0; i < (sparta ? 5 : k.length); i++)
-        txt.push("; " + pad_hex(_br[k[i]]) + " " + k[i]);
-
+    var bi = '', bic = ''; //(pvbestinfoo) variables are for italic HTML element for displaying boot information for non DOS disk 
+    for (var i = 0; i < (sparta ? 5 : k.length); i++) {
+        txt.push("; " + bi + pad_hex(_br[k[i]]) + " " + k[i] + bic);
+            //(pvbestinfoo) modifying the display of the Boot Record
+            if (i == 3 && !sparta) {// (pvbestinfoo) check at the 4th value of boot record (i.e. BCONT)
+                if (d[22] == 0x4C) // (pvbestinfoo) is there a JUMP $4C to BCOUNT ?
+                    txt.push("; Boot execution start with a JUMP to BCONT=$" + hex(_br[k[4]],4)); // (pvbestinfoo) yes
+                else { // (pvbestinfoo) no, so display the normal boot execution start address
+                    txt.push("; Boot execution start at BLDADDR+6=$" + hex(_br[k[2]]+6,4));
+                    bi ="<i>"; // (pvbestinfoo) and all remaining boot info are not relevant and displayed in italic
+                    bic ="</i>";
+                }
+                txt.push("; " + bi + "<b>Additional DOS boot info:</b>" + bic); // (pvbestinfoo) DOS disk additional boot info title display
+            }
+    }
     if (sparta) {
         txt.push("");
         txt.push("; SpartaDOS");
@@ -5394,8 +5415,14 @@ function show_atr(f,rawmode)
         }
 
         var s = sectors[n];
-        var sstr = s ? ` (${s.dir.name} ${s.sector.offset} of ${s.dir.total})` : '';
-        txt.push("; Sector " + n + (zero ? " (" + size + " zeros)":"") + sstr);
+        var sstr = "";
+		//(pvbestinfoo) modify the dislay of the sector title with corresponding hex value
+		if (s) {
+                var sect = s.sector.offset + 1; //(pvbestinfoo) sector count starts at 1
+                sstr = " [" + s.dir.name + " - Sector " + (s.sector.offset + 1) + " of " + s.dir.total;
+                sstr += " ($" + sect.toString(16).toUpperCase() + "/$" + s.dir.total.toString(16).toUpperCase() + ")]";
+            }
+        txt.push("; Sector $" + hex(n, 3) + " (" + n + ")" + (zero ? " (" + size + " zeros)" : "") + sstr);
 
         if (!zero)
             txt.push(hex_dump(d,offset,size,4));
