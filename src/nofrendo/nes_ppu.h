@@ -26,6 +26,7 @@
 #ifndef _NES_PPU_H_
 #define _NES_PPU_H_
 
+#include "../../config.h"
 #include "bitmap.h"
 
 /* PPU register defines */
@@ -66,8 +67,8 @@
 #define  OAMF_HFLIP           0x40
 #define  OAMF_BEHIND          0x20
 
-/* Maximum number of sprites per horizontal scanline */
-#define  PPU_MAXSPRITE        8
+/* Maximum number of sprites per horizontal scanline, default is 8 */
+#define  PPU_MAXSPRITE        NES_MAX_SPRITES
 
 /* some mappers do *dumb* things */
 typedef void (*ppulatchfunc_t)(uint32 address, uint8 value);

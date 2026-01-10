@@ -558,9 +558,11 @@ public:
 
     virtual int make_default_media(const string& path)
     {
+#ifndef USE_SD_CARD		
         unpack((path + "/ftrack.gg").c_str(),ftrack_gg,sizeof(ftrack_gg));
         unpack((path + "/baraburuu.sms").c_str(),baraburuu_sms,sizeof(baraburuu_sms));
         unpack((path + "/nanowars8k.sms").c_str(),nanowars8k_sms,sizeof(nanowars8k_sms));
+#endif		
         return 0;
     }
 };

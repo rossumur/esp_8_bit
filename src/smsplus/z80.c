@@ -1,6 +1,3 @@
-#pragma GCC optimize ("O2")
-
-
 /*****************************************************************************
  *
  *	 z80.c
@@ -55,6 +52,7 @@
  *		to a detailed description by Sean Young which can be found at:
  *		http://www.msxnet.org/tech/Z80/z80undoc.txt
  *****************************************************************************/
+#pragma GCC optimize ("Os")
 
 #include "shared.h"
 #include "cpuintrf.h"

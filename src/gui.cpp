@@ -1077,6 +1077,7 @@ static void ir(const uint8_t* j, int len)
     pad_key(GENERIC_DOWN,pad,81);   // down
     pad_key(GENERIC_RIGHT,pad,79);   // right
     pad_key(GENERIC_LEFT,pad,80);     // left
+    pad_key(GENERIC_OTHER,pad,58);   // home/gui (NES controller)
     pad_key(GENERIC_RESET | GENERIC_FIRE_Z,pad,58);   // home/gui
     pad_key(GENERIC_FIRE | GENERIC_FIRE_C | GENERIC_FIRE_B | GENERIC_FIRE_A,pad,40); // enter (A)
     _last_pad = pad;

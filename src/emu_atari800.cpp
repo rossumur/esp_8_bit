@@ -1267,6 +1267,7 @@ public:
     //  default media is basic/dos
     virtual int make_default_media(const string& path)
     {
+#ifndef USE_SD_CARD		
         unpack((path + "/dos20.atr").c_str(),dos20_atr,sizeof(dos20_atr));
         unpack((path + "/balls_forever.xex").c_str(),balls_forever_xex,sizeof(balls_forever_xex));
         unpack((path + "/paperweight.xex").c_str(),paperweight_xex,sizeof(paperweight_xex));
@@ -1286,6 +1287,7 @@ public:
         unpack((path + "/gravity_worms.atr").c_str(),gravity_worms_atr,sizeof(gravity_worms_atr));
         unpack((path + "/wasteland.atr").c_str(),wasteland_atr,sizeof(wasteland_atr));
         unpack((path + "/star_raiders_II.atr").c_str(),star_raiders_II_atr,sizeof(star_raiders_II_atr));
+#endif		
         return 0;
     }
 

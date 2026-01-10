@@ -82,8 +82,9 @@ typedef struct inesheader_s
 #define  VRAM_BANK_LENGTH  0x2000
 
 /* Save battery-backed RAM */
-static void rom_savesram(rominfo_t *rominfo)
+void rom_savesram(rominfo_t *rominfo)
 {
+#ifdef USE_SD_CARD	
    FILE *fp;
    char fn[PATH_MAX + 1];
 
@@ -102,6 +103,7 @@ static void rom_savesram(rominfo_t *rominfo)
          log_printf("Wrote battery RAM to %s.\n", fn);
       }
    }
+#endif
 }
 
 /* Load battery-backed RAM from disk */
@@ -446,6 +448,8 @@ rominfo_t *rom_load(const char *filename)
 
    memset(rominfo, 0, sizeof(rominfo_t));
 
+   osd_fullname(rominfo->filename, filename);
+   
    /* Get the header and stick it into rominfo struct */
 	if (rom_getheader(&rom, rominfo))
       goto _fail;

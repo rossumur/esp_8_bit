@@ -816,11 +816,24 @@ static void ppu_renderoam(uint8 *vidbuf, int scanline)
       uint8 *data_ptr, *bmp_ptr;
       uint32 vram_adr;
       int y_offset;
-      uint8 tile_index, attrib, col_high;
-      uint8 sprite_y, sprite_x;
+      uint8 tile_index = 255, attrib, col_high;
+      uint8 sprite_y = 255, sprite_x;
       bool check_strike;
-      int strike_pixel;
+      int strike_pixel, mask_sprite_cnt = 0;
 
+	  /* If the hack for more than 8 sprites per line is enabled and */
+	  /* 8 consecutive sprites have the same tile & y-cords then end */
+	  if (PPU_MAXSPRITE > 8)
+      {
+		if ((sprite_y == sprite_ptr->y_loc + 1) && (tile_index == sprite_ptr->tile))
+			if (++mask_sprite_cnt == 8)
+			{
+				ppu.stat |= PPU_STATF_MAXSPRITE;
+				break;
+			}
+		else mask_sprite_cnt = 0;
+	  }
+	  
       sprite_y = sprite_ptr->y_loc + 1;
 
       /* Check to see if sprite is out of range */
@@ -828,7 +841,7 @@ static void ppu_renderoam(uint8 *vidbuf, int scanline)
           || (0 == sprite_y) || (sprite_y >= 240))
          continue;
 
-      sprite_x = sprite_ptr->x_loc;
+	  sprite_x = sprite_ptr->x_loc;
       tile_index = sprite_ptr->tile;
       attrib = sprite_ptr->atr;
 

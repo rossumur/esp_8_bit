@@ -32,7 +32,7 @@
 #include "osd.h"
 
 /* hardware surface */
-static bitmap_t *screen = NULL;
+bitmap_t *screen = NULL;
 
 /* primary / backbuffer surfaces */
 bitmap_t *primary_buffer = NULL; //, *back_buffer = NULL;
@@ -334,7 +334,7 @@ INLINE int calc_dirties(rect_t *list)
 
 void vid_flush(void)
 {
-   bitmap_t *temp;
+   //bitmap_t *temp;
    int num_dirties;
    rect_t dirty_rects[MAX_DIRTIES];
 
@@ -370,7 +370,7 @@ int vid_setmode(int width, int height)
 //   if (NULL != back_buffer)
 //      bmp_destroy(&back_buffer);
 
-   primary_buffer = bmp_create(width, height, 8); /* no overdraw */
+   primary_buffer = bmp_create(width, height, 8); /* 8 bit overdraw */
    if (NULL == primary_buffer)
       return -1;
 

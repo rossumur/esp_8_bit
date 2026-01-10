@@ -56,6 +56,7 @@ void osd_fullname(char *fullname, const char *shortname)
 /* This gives filenames for storage of saves */
 char *osd_newextension(char *string, char *ext)
 {
+   strcat(string, ext);
    return string;
 }
 
@@ -214,6 +215,7 @@ int osd_init()
     return 0;
 }
 
+void rom_savesram(rominfo_t *rominfo);
 nes_t* _nes_p = 0;
 int nes_emulate_init(const char* path, int width, int height)
 {
@@ -227,6 +229,8 @@ int nes_emulate_init(const char* path, int width, int height)
         _nes_p = nes_create();
         vid_setmode(NES_SCREEN_WIDTH, 240);
     }
+	else rom_savesram(_nes_p->rominfo);
+		
     if (nes_insertcart(path,_nes_p))
         return -1;
 
